@@ -1,0 +1,9 @@
+streamlit>=1.49.1
+pandas>=2.0.0
+geopandas>=1.0.0
+folium>=0.20.0
+streamlit-folium>=0.25.0
+plotly>=5.0.0
+shapely>=2.0.0
+branca>=0.8.0
+

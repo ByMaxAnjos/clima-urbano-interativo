@@ -77,19 +77,7 @@ def renderizar_pagina():
         if st.button("🚀 Começar Exploração", type="primary", use_container_width=True):
             st.session_state.navigation = "Explorar"
             st.rerun()
-    
-    # Seção de imagem explicativa
-    st.markdown("### 🏗️ As 17 Zonas Climáticas Locais Padrão")
-    
-    try:
-        st.image(
-            "assets/lcz_photo.jpg",
-            caption="As 17 Zonas Climáticas Locais (LCZ) padrão desenvolvidas por Stewart e Oke (2012). Fonte: Demuzere et al., (2020)",
-            use_container_width=True
-        )
-    except:
-        st.info("Imagem das ZCLs não pôde ser carregada. Verifique sua conexão com a internet.")
-    
+        
     # Author info section
     st.markdown("### 👥 Desenvolvedores")
 
@@ -107,7 +95,7 @@ def renderizar_pagina():
                     st.info("👤")
             
             with col_info:
-                st.write("Pesquisador em clima urbano, modelagem ambiental e análise geoespacial.")
+                st.write("Pesquisador da TU Berlin. Áreas de atuação: clima urbano, machine learning, modelagem ambiental e análise geoespacial.")
                 st.markdown("""
                 - [GitHub](https://github.com/maxanjos)
                 - [LinkedIn](https://www.linkedin.com/in/maxanjos/)
@@ -126,7 +114,7 @@ def renderizar_pagina():
                     st.info("👤")
             
             with col_info:
-                st.write("Mãe do Caetano, pesquisadora UERJ, Geografia da Saúde, Ensino de Geografia e Climatologia Geógrafica")
+                st.write("❤ Mãe do Caetano e pesquisadora UERJ: Áreas de atuação: Geografia da Saúde, Ensino de Geografia e Climatologia Geógrafica")
                 st.markdown("""
                 - [ResearchGate](https://www.researchgate.net/profile/Mariana-Dias)
                 - [Email](mailto:marianaandreotti@gmail.com)

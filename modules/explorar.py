@@ -116,16 +116,6 @@ def renderizar_pagina(gdf_zcl, gdf_temp):
                         'fillOpacity': 0.7,
                         'opacity': 0.8
                     },
-                    tooltip=folium.Tooltip(
-                        f"""
-                        <b>Zona Climática:</b> {zcl_classe}<br>
-                        <b>Descrição:</b> {row.get('descricao', 'Sem descrição')}<br>
-                        <b>Efeito Térmico:</b> {row.get('efeito_temp', 'Não disponível')}<br>
-                        <b>Contribuição à Ilha de Calor:</b> {row.get('ilha_calor', 'Não disponível')}<br>
-                        <b>Intervenção Recomendada:</b> {row.get('intervencao', 'Não disponível')}
-                        """,
-                        sticky=True
-                    ),
                     popup=folium.Popup(
                         f"""
                         <div style='width: 200px'>

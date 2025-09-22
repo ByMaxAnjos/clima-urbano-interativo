@@ -1,4 +1,4 @@
-# 🌍 Plataforma Clima Urbano Interativo
+# 🌍 Plataforma Clima Urbano Interativo: https://clima-urbano.streamlit.app/
 
 Uma ferramenta educacional moderna e interativa para análise de **Ilhas de Calor Urbanas (ICU)** e **Zonas Climáticas Locais (ZCL)**, desenvolvida especificamente para estudantes e pesquisadores de Geografia.
 
@@ -13,6 +13,7 @@ Esta plataforma foi desenvolvida com base nas metodologias científicas estabele
 
 ### 🔬 Base Científica
 
+- **LCZ4r R package** - Software para analisar ilha de calor e classificação das Zonas Climáticas Locais
 - **Stewart & Oke (2012)** - Sistema de classificação das Zonas Climáticas Locais
 - **WUDAPT** - Protocolo global para mapeamento urbano
 - **LCZ Generator** - Ferramenta automatizada para geração de mapas de ZCL
@@ -54,7 +55,7 @@ Esta plataforma foi desenvolvida com base nas metodologias científicas estabele
 
 1. **Clone o repositório:**
 ```bash
-git clone https://github.com/seu-usuario/plataforma-clima-urbano.git
+git clone https://github.com/ByMaxAnjos/clima-urbano-interativo.git
 cd plataforma-clima-urbano
 ```
 
@@ -223,12 +224,6 @@ Contribuições são bem-vindas! Para contribuir:
 ## 📄 Licença
 
 Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICENSE) para detalhes.
-
-## 📞 Contato
-
-- **Desenvolvedor:** [Seu Nome]
-- **Email:** contato@exemplo.com
-- **GitHub:** [@seu-usuario](https://github.com/seu-usuario)
 
 ## 🙏 Agradecimentos
 

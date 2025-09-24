@@ -93,8 +93,8 @@ with st.sidebar:
     # Usar radio button para navegação
     pagina_selecionada = st.radio(
         "Selecione um módulo:",
-        ["Início", "Explorar", "Investigar", "Visualizar", "Avaliar plataforma", "Informações"],
-        index=["Início", "Explorar", "Investigar", "Visualizar", "Avaliar plataforma", "Informações"].index(st.session_state.navigation),
+        ["Início", "Explorar", "Investigar", "Visualizar", "Simular", "Avaliar plataforma", "Informações"],
+        index=["Início", "Explorar", "Investigar", "Visualizar", "Simular", "Avaliar plataforma", "Informações"].index(st.session_state.navigation),
         key="nav_radio"
     )
     
@@ -146,10 +146,13 @@ elif pagina_selecionada == "Investigar":
     investigar.renderizar_pagina()
 elif pagina_selecionada == "Visualizar":
     visualizar.renderizar_pagina()
+elif pagina_selecionada == "Simular":
+    simular.renderizar_pagina()
 elif st.session_state['navigation'] == "Avaliar plataforma":
     avaliacao.renderizar_pagina()
 elif st.session_state['navigation'] == "Informações":
     info.renderizar_pagina()
+
 # Footer
 st.markdown("---")
 st.markdown("""

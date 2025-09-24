@@ -178,7 +178,6 @@ def renderizar_pagina(gdf_zcl, gdf_temp):
         1. Selecione as camadas desejadas na barra lateral
         2. Clique nos elementos do mapa para ver detalhes
         3. Use os controles de zoom para explorar
-        4. Ative/desative camadas conforme necessário
         """)
         
         # Mostrar informações do último clique

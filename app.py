@@ -2,8 +2,8 @@
 
 import streamlit as st
 import os
-from modules import inicio, explorar, investigar, visualizar, avaliacao, info
-from utils import processamento
+from modules import inicio, explorar, investigar, visualizar, simular, avaliacao, info
+from utils import processamento, simulacao
 
 # Configuração da página
 st.set_page_config(

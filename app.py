@@ -141,7 +141,7 @@ with st.container():
 if pagina_selecionada == "Início":
     inicio.renderizar_pagina()
 elif pagina_selecionada == "Explorar":
-    explorar.renderizar_pagina(gdf_zcl_base, gdf_temp_base)
+    explorar.renderizar_pagina()
 elif pagina_selecionada == "Investigar":
     investigar.renderizar_pagina()
 elif pagina_selecionada == "Visualizar":

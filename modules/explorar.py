@@ -305,12 +305,23 @@ def renderizar_mapa_folium():
         
         # Definir cores para as classes LCZ
         cores_lcz = {
-            'LCZ 1': '#8B0000', 'LCZ 2': '#CD5C5C', 'LCZ 3': '#F0E68C',
-            'LCZ 4': '#FFD700', 'LCZ 5': '#FFA500', 'LCZ 6': '#FF8C00',
-            'LCZ 7': '#FF6347', 'LCZ 8': '#FF4500', 'LCZ 9': '#DC143C',
-            'LCZ 10': '#B22222', 'LCZ A': '#228B22', 'LCZ B': '#32CD32',
-            'LCZ C': '#90EE90', 'LCZ D': '#98FB98', 'LCZ E': '#AFEEEE',
-            'LCZ F': '#87CEEB', 'LCZ G': '#4682B4'
+            'LCZ 1':  '#910613',  # Compact high-rise
+            'LCZ 2':  '#D9081C',  # Compact midrise
+            'LCZ 3':  '#FF0A22',  # Compact low-rise
+            'LCZ 4':  '#C54F1E',  # Open high-rise
+            'LCZ 5':  '#FF6628',  # Open midrise
+            'LCZ 6':  '#FF985E',  # Open low-rise
+            'LCZ 7':  '#FDED3F',  # Lightweight low-rise
+            'LCZ 8':  '#BBBBBB',  # Large low-rise
+            'LCZ 9':  '#FFCBAB',  # Sparsely built
+            'LCZ 10': '#565656',  # Heavy industry
+            'LCZ A':  '#006A18',  # Dense trees
+            'LCZ B':  '#00A926',  # Scattered trees
+            'LCZ C':  '#628432',  # Bush / scrub
+            'LCZ D':  '#B5DA7F',  # Low plants
+            'LCZ E':  '#000000',  # Bare rock / paved
+            'LCZ F':  '#FCF7B1',  # Bare soil / sand
+            'LCZ G':  '#656BFA'   # Water
         }
         
         # Adicionar camada GeoJSON
@@ -360,7 +371,7 @@ def renderizar_mapa_folium():
         """)
         
         # Exibir mapa
-        map_data = st_folium(m, width=700, height=500, returned_objects=["last_object_clicked"])
+        map_data = st_folium(m, width="100%", height=800, returned_objects=["last_object_clicked"])
         
         # Exibir informações do clique
         if map_data['last_object_clicked']:

@@ -3,476 +3,388 @@
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
-from branca.colormap import linear
-import pandas as pd
 import geopandas as gpd
+import pandas as pd
 import os
+import matplotlib.pyplot as plt
+import matplotlib
 import base64
-from io import StringIO
-import sys
-import traceback
+from io import BytesIO
+import tempfile
+import rasterio
+from utils.lcz4r import lcz_get_map, process_lcz_map, enhance_lcz_data, lcz_plot_map
 
-# Importar funções LCZ4r
-try:
-    from utils.lcz4r import lcz_get_map, process_lcz_map, enhance_lcz_data
-except ImportError as e:
-    st.error(f"Erro ao importar módulo LCZ4r: {e}")
+# Configurar matplotlib para usar backend não-interativo
+matplotlib.use('Agg')
 
-def load_logo():
-    """Carrega o logo LCZ4r em base64."""
+def renderizar_pagina():
+    """Renderiza a página do módulo Explorar com organização correta."""
+    
+    # Cabeçalho do módulo
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                padding: 2rem; border-radius: 15px; margin-bottom: 2rem; text-align: center;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 1rem;">
+            <img src="data:image/png;base64,{}" width="80" style="border-radius: 10px;">
+            <div>
+                <h1 style="color: white; margin: 0; font-size: 2.5rem;">🌍 Módulo Explorar</h1>
+                <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 1.2rem;">
+                    Gere e visualize mapas de Zonas Climáticas Locais (LCZ) interativos
+                </p>
+            </div>
+        </div>
+    </div>
+    """.format(get_logo_base64()), unsafe_allow_html=True)
+    
+    # 1. GERADOR DE MAPAS LCZ4r
+    st.markdown("## 🚀 Gerador de Mapas LCZ4r")
+    
+    with st.expander("🔧 Gerar Novo Mapa LCZ", expanded=False):
+        st.markdown("""
+        **LCZ4r** é uma ferramenta avançada para processamento de Zonas Climáticas Locais que permite:
+        
+        - 🌍 Gerar mapas LCZ para qualquer cidade do mundo
+        - 📊 Processar dados de alta resolução automaticamente  
+        - 🗺️ Visualizar resultados de forma interativa
+        - 💾 Salvar dados para análises futuras
+        """)
+        
+        # Interface de entrada
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            cidade_nome = st.text_input(
+                "🏙️ Nome da Cidade:",
+                placeholder="Ex: São Paulo, New York, London, Tokyo...",
+                help="Digite o nome da cidade para gerar o mapa LCZ"
+            )
+        
+        with col2:
+            gerar_mapa = st.button("🚀 Gerar Mapa LCZ", type="primary", width='stretch')
+        
+        # Processamento do mapa
+        if gerar_mapa and cidade_nome:
+            processar_mapa_lcz(cidade_nome)
+    
+    # 2. VISUALIZAR LCZ MAP COM MATPLOTLIB
+    st.markdown("---")
+    st.markdown("## 🎨 Visualizar LCZ Map")
+    
+    # Verificar se existe mapa gerado
+    if verificar_dados_disponiveis():
+        renderizar_secao_matplotlib()
+    else:
+        st.info("ℹ️ Gere um mapa LCZ primeiro para visualizar os resultados.")
+    
+    # 3. VISUALIZAR COM FOLIUM GEOJSON
+    st.markdown("---")
+    st.markdown("## 🗺️ Mapa Interativo")
+    
+    if verificar_dados_disponiveis():
+        renderizar_mapa_folium()
+    else:
+        st.info("ℹ️ Gere um mapa LCZ primeiro para visualizar o mapa interativo.")
+    
+    # Instruções finais
+    st.markdown("---")
+    st.markdown("""
+    ### 💡 Como Usar o Módulo Explorar
+    
+    1. **🚀 Gere um Mapa:** Use o gerador LCZ4r para criar um mapa para sua cidade de interesse
+    2. **🎨 Visualize:** Veja o mapa em formato científico com matplotlib
+    3. **🗺️ Explore:** Interaja com o mapa usando a interface Folium
+    4. **➡️ Próximo passo:** Vá para "Investigar" para análises detalhadas ou "Simular" para testar intervenções
+    """)
+
+def get_logo_base64():
+    """Retorna o logo LCZ4r em base64."""
     try:
         logo_path = "assets/images/lcz4r_logo.png"
         if os.path.exists(logo_path):
             with open(logo_path, "rb") as f:
                 return base64.b64encode(f.read()).decode()
-    except Exception:
+    except:
         pass
-    return None
+    return ""
 
-def processar_cidade_lcz4r(nome_cidade, progress_bar=None, status_text=None):
-    """
-    Processa uma cidade usando LCZ4r e retorna o GeoDataFrame.
+def processar_mapa_lcz(cidade_nome):
+    """Processa e gera o mapa LCZ para a cidade especificada."""
     
-    Parameters
-    ----------
-    nome_cidade : str
-        Nome da cidade para processamento
-    progress_bar : streamlit.progress, optional
-        Barra de progresso do Streamlit
-    status_text : streamlit.empty, optional
-        Texto de status do Streamlit
+    # Barra de progresso
+    progress_bar = st.progress(0)
+    status_text = st.empty()
     
-    Returns
-    -------
-    geopandas.GeoDataFrame or None
-        GeoDataFrame com dados LCZ processados
-    """
     try:
-        if status_text:
-            status_text.text("🔍 Buscando cidade no OpenStreetMap...")
-        if progress_bar:
-            progress_bar.progress(10)
+        # Etapa 1: Download dos dados
+        status_text.text("📡 Baixando dados LCZ globais...")
+        progress_bar.progress(25)
         
-        # Download do mapa LCZ
-        if status_text:
-            status_text.text("📡 Baixando dados LCZ globais...")
-        if progress_bar:
-            progress_bar.progress(30)
-            
-        raster_data, raster_profile = lcz_get_map(city=nome_cidade)
+        data, profile = lcz_get_map(cidade_nome)
         
-        if status_text:
-            status_text.text("🔄 Processando dados raster...")
-        if progress_bar:
-            progress_bar.progress(60)
+        # Etapa 2: Processamento
+        status_text.text("⚙️ Processando dados LCZ...")
+        progress_bar.progress(50)
         
-        # Processar para formato vetorial
-        lcz_gdf = process_lcz_map(raster_data, raster_profile, factor=5)
+        lcz_gdf = process_lcz_map(data, profile)
         
-        if status_text:
-            status_text.text("✨ Aprimorando dados LCZ...")
-        if progress_bar:
-            progress_bar.progress(80)
+        # Etapa 3: Aprimoramento
+        status_text.text("✨ Aprimorando dados...")
+        progress_bar.progress(75)
         
-        # Aprimorar dados
         enhanced_gdf = enhance_lcz_data(lcz_gdf)
         
-        if status_text:
-            status_text.text("💾 Salvando arquivo GeoJSON...")
-        if progress_bar:
-            progress_bar.progress(90)
+        # Etapa 4: Salvamento
+        status_text.text("💾 Salvando resultados...")
+        progress_bar.progress(90)
         
-        # Salvar como map_lcz.geojson
-        output_path = "data/map_lcz.geojson"
-        enhanced_gdf.to_file(output_path, driver='GeoJSON')
+        # Criar diretórios se não existirem
+        os.makedirs("data", exist_ok=True)
+        os.makedirs("LCZ4r_output", exist_ok=True)
         
-        if status_text:
-            status_text.text("✅ Processamento concluído!")
-        if progress_bar:
-            progress_bar.progress(100)
+        # Salvar GeoJSON
+        enhanced_gdf.to_file("data/map_lcz.geojson", driver="GeoJSON")
         
-        return enhanced_gdf
+        # Salvar dados raster para visualização matplotlib
+        with rasterio.open("LCZ4r_output/lcz_map.tif", 'w', **profile) as dst:
+            dst.write(data, 1)
+        
+        # Finalização
+        progress_bar.progress(100)
+        status_text.text("✅ Processamento concluído!")
+        
+        # Exibir métricas
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Classes LCZ", len(enhanced_gdf['zcl_classe'].unique()))
+        with col2:
+            st.metric("Polígonos", len(enhanced_gdf))
+        with col3:
+            area_total = enhanced_gdf['area_km2'].sum() if 'area_km2' in enhanced_gdf.columns else 0
+            st.metric("Área Total", f"{area_total:.1f} km²")
+        
+        st.success(f"✅ Mapa LCZ gerado com sucesso para {cidade_nome}!")
+        st.info("📍 O novo mapa substituiu os dados anteriores e está sendo exibido abaixo.")
+        
+        # Forçar rerun para atualizar as seções
+        st.rerun()
         
     except Exception as e:
-        error_msg = f"Erro no processamento LCZ4r: {str(e)}"
-        if status_text:
-            status_text.error(error_msg)
-        st.error(error_msg)
-        st.error("Detalhes do erro:")
-        st.code(traceback.format_exc())
-        return None
+        progress_bar.progress(0)
+        status_text.text("")
+        st.error(f"❌ Erro ao processar mapa: {str(e)}")
 
-def carregar_dados_lcz():
-    """Carrega dados LCZ existentes ou usa dados de exemplo."""
-    # Tentar carregar map_lcz.geojson primeiro
-    lcz_path = "data/map_lcz.geojson"
-    if os.path.exists(lcz_path):
-        try:
-            gdf = gpd.read_file(lcz_path)
-            return gdf, "Dados LCZ personalizados"
-        except Exception as e:
-            st.warning(f"Erro ao carregar {lcz_path}: {e}")
+def verificar_dados_disponiveis():
+    """Verifica se existem dados LCZ disponíveis."""
+    geojson_path = "data/map_lcz.geojson"
+    raster_path = "LCZ4r_output/lcz_map.tif"
+    return os.path.exists(geojson_path) and os.path.exists(raster_path)
+
+def renderizar_secao_matplotlib():
+    """Renderiza a seção de visualização com matplotlib."""
     
-    # Fallback para dados de exemplo
-    exemplo_path = "data/sao_paulo_zcl.geojson"
-    if os.path.exists(exemplo_path):
-        try:
-            gdf = gpd.read_file(exemplo_path)
-            return gdf, "Dados de exemplo (São Paulo)"
-        except Exception as e:
-            st.warning(f"Erro ao carregar dados de exemplo: {e}")
+    st.markdown("### ⚙️ Configurações de Visualização")
     
-    return None, "Nenhum dado disponível"
-
-def renderizar_pagina(gdf_zcl, gdf_temp):
-    """Renderiza a página do módulo Explorar com integração LCZ4r."""
-    
-    # Header com logo LCZ4r
-    logo_b64 = load_logo()
-    
-    if logo_b64:
-        st.markdown(f"""
-        <div class="module-header" style="display: flex; align-items: center; gap: 20px; margin-bottom: 30px;">
-            <img src="data:image/png;base64,{logo_b64}" style="width: 80px; height: 80px;">
-            <div>
-                <h1 style="margin: 0;">🌍 Módulo Explorar</h1>
-                <p style="margin: 5px 0 0 0; color: #666;">Gere e visualize mapas de Zonas Climáticas Locais personalizados com LCZ4r</p>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown("""
-        <div class="module-header">
-            <h1>🌍 Módulo Explorar</h1>
-            <p>Gere e visualize mapas de Zonas Climáticas Locais personalizados com LCZ4r</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # Seção LCZ4r Generator
-    st.markdown("### 🚀 Gerador de Mapas LCZ4r")
-    
-    with st.expander("🔧 Gerar Novo Mapa LCZ", expanded=False):
-        st.markdown("""
-        **LCZ4r** é uma ferramenta avançada para processamento de Zonas Climáticas Locais que permite:
-        - 🌍 Gerar mapas LCZ para qualquer cidade do mundo
-        - 📊 Processar dados de alta resolução automaticamente
-        - 🗺️ Visualizar resultados de forma interativa
-        - 💾 Salvar dados para análises futuras
-        """)
-        
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            nome_cidade = st.text_input(
-                "🏙️ Nome da Cidade:",
-                placeholder="Ex: São Paulo, New York, London, Tokyo...",
-                help="Digite o nome de qualquer cidade do mundo"
-            )
-        
-        with col2:
-            processar_button = st.button(
-                "🚀 Gerar Mapa LCZ",
-                type="primary",
-                use_container_width=True
-            )
-        
-        if processar_button and nome_cidade:
-            with st.spinner("Processando dados LCZ4r..."):
-                # Containers para progresso
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                # Processar cidade
-                novo_gdf = processar_cidade_lcz4r(nome_cidade, progress_bar, status_text)
-                
-                if novo_gdf is not None:
-                    st.success(f"✅ Mapa LCZ gerado com sucesso para {nome_cidade}!")
-                    st.info("O novo mapa substituiu os dados anteriores e está sendo exibido abaixo.")
-                    
-                    # Atualizar dados para visualização
-                    gdf_zcl = novo_gdf
-                    
-                    # Mostrar estatísticas
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Classes LCZ", len(novo_gdf['zcl_classe'].unique()))
-                    with col2:
-                        st.metric("Polígonos", len(novo_gdf))
-                    with col3:
-                        area_total = novo_gdf['area_km2'].sum() if 'area_km2' in novo_gdf.columns else 0
-                        st.metric("Área Total", f"{area_total:.1f} km²")
-                else:
-                    st.error("❌ Falha no processamento. Verifique o nome da cidade e tente novamente.")
-        
-        elif processar_button and not nome_cidade:
-            st.warning("⚠️ Por favor, digite o nome de uma cidade.")
-
-    # Carregar dados LCZ atuais
-    gdf_zcl_atual, fonte_dados = carregar_dados_lcz()
-    if gdf_zcl_atual is not None:
-        gdf_zcl = gdf_zcl_atual
-
-    # Painel de controle na barra lateral
-    with st.sidebar:
-        st.markdown("### 🎛️ Controles de Visualização")
-        
-        # Status dos dados
-        st.markdown(f"**📊 Dados Ativos:** {fonte_dados}")
-        
-        st.markdown("### 🗂️ Camadas de Dados")
-        
-        # Controles de camadas com descrições
-        mostrar_zcl = st.checkbox(
-            "🏘️ Zonas Climáticas Locais (ZCL)", 
-            value=True,
-            help="Mostra a classificação do uso do solo urbano segundo Stewart & Oke (2012)"
-        )
-        
-        mostrar_temp = st.checkbox(
-            "🌡️ Temperatura da Superfície", 
-            value=False,
-            help="Dados de temperatura obtidos por sensoriamento remoto"
-        )
-        
-        # Informações sobre os dados
-        if mostrar_zcl and gdf_zcl is not None and not gdf_zcl.empty:
-            st.markdown("### ℹ️ Informações dos Dados")
-            
-            classes_unicas = gdf_zcl['zcl_classe'].unique()
-            st.info(f"""
-            **Classes LCZ Presentes:**
-            {chr(10).join([f"- {classe}" for classe in sorted(classes_unicas)])}
-            """)
-            
-        if mostrar_temp and gdf_temp is not None and not gdf_temp.empty:
-            temp_min = gdf_temp['temperatura_c'].min()
-            temp_max = gdf_temp['temperatura_c'].max()
-            st.info(f"""
-            **Temperatura:**
-            - Mínima: {temp_min:.1f}°C
-            - Máxima: {temp_max:.1f}°C
-            - Fonte: Landsat 8 TIRS
-            """)
-
-    # Área principal do mapa
-    col1, col2 = st.columns([4, 1])
+    col1, col2 = st.columns([2, 1])
     
     with col1:
-        if gdf_zcl is not None and not gdf_zcl.empty:
-            # Configuração do mapa base
-            bounds = gdf_zcl.total_bounds
-            center_lat = (bounds[1] + bounds[3]) / 2
-            center_lon = (bounds[0] + bounds[2]) / 2
-            map_center = [center_lat, center_lon]
-            
-            m = folium.Map(
-                location=map_center, 
-                zoom_start=11, 
-                tiles="CartoDB positron",
-                prefer_canvas=True
-            )
-
-            # Adicionar camada de ZCL se selecionada
-            if mostrar_zcl:
-                # Mapeamento de cores para as classes de ZCL (padrão LCZ4r)
-                zcl_color_map = {
-                    'LCZ 1': '#910613',    # Compact high-rise
-                    'LCZ 2': '#D9081C',    # Compact midrise
-                    'LCZ 3': '#FF0A22',    # Compact low-rise
-                    'LCZ 4': '#C54F1E',    # Open high-rise
-                    'LCZ 5': '#FF6628',    # Open midrise
-                    'LCZ 6': '#FF985E',    # Open low-rise
-                    'LCZ 7': '#FDED3F',    # Lightweight low-rise
-                    'LCZ 8': '#BBBBBB',    # Large low-rise
-                    'LCZ 9': '#FFCBAB',    # Sparsely built
-                    'LCZ 10': '#565656',   # Heavy industry
-                    'LCZ A': '#006A18',    # Dense trees
-                    'LCZ B': '#00A926',    # Scattered trees
-                    'LCZ C': '#628432',    # Bush, scrub
-                    'LCZ D': '#B5DA7F',    # Low plants
-                    'LCZ E': '#000000',    # Bare rock or paved
-                    'LCZ F': '#FCF7B1',    # Bare soil or sand
-                    'LCZ G': '#656BFA'     # Water
-                }
-                
-                # Adiciona cada polígono de ZCL ao mapa
-                for _, row in gdf_zcl.iterrows():
-                    zcl_classe = row.get('zcl_classe', 'Desconhecida')
-                    cor = zcl_color_map.get(zcl_classe, '#gray')
-                    
-                    # Informações para tooltip e popup
-                    descricao = row.get('descricao', 'Sem descrição')
-                    efeito_temp = row.get('efeito_temp', 'Sem informação')
-                    area_info = f"Área: {row.get('area_km2', 0):.2f} km²" if 'area_km2' in row else ""
-                    
-                    folium.GeoJson(
-                        row.geometry,
-                        style_function=lambda feature, color=cor: {
-                            'fillColor': color,
-                            'color': 'black',
-                            'weight': 1,
-                            'fillOpacity': 0.7,
-                            'opacity': 0.8
-                        },
-                        tooltip=folium.Tooltip(
-                            f"""
-                            <b>Zona Climática:</b> {zcl_classe}<br>
-                            <b>Descrição:</b> {descricao}<br>
-                            {area_info}
-                            """,
-                            sticky=True
-                        ),
-                        popup=folium.Popup(
-                            f"""
-                            <div style='width: 300px'>
-                            <h4>{zcl_classe}</h4>
-                            <p><b>Características:</b></p>
-                            <p>{descricao}</p>
-                            <p><b>Efeito Térmico:</b></p>
-                            <p>{efeito_temp}</p>
-                            {f'<p><b>{area_info}</b></p>' if area_info else ''}
-                            </div>
-                            """,
-                            max_width=350
-                        )
-                    ).add_to(m)
-
-            # Adicionar camada de temperatura se selecionada
-            if mostrar_temp and gdf_temp is not None and not gdf_temp.empty:
-                # Criar mapa de cores para temperatura
-                temp_min = gdf_temp['temperatura_c'].min()
-                temp_max = gdf_temp['temperatura_c'].max()
-                
-                colormap = linear.YlOrRd_09.scale(temp_min, temp_max)
-                colormap.caption = 'Temperatura da Superfície (°C)'
-                m.add_child(colormap)
-
-                # Adiciona cada célula de temperatura ao mapa
-                for _, row in gdf_temp.iterrows():
-                    temp_valor = row['temperatura_c']
-                    
-                    folium.GeoJson(
-                        row.geometry,
-                        style_function=lambda feature, temp=temp_valor: {
-                            'fillColor': colormap(temp),
-                            'color': 'none',
-                            'weight': 0,
-                            'fillOpacity': 0.6,
-                        },
-                        tooltip=folium.Tooltip(
-                            f"<b>Temperatura:</b> {temp_valor:.1f}°C",
-                            sticky=True
-                        )
-                    ).add_to(m)
-
-            # Adicionar controle de camadas
-            folium.LayerControl().add_to(m)
-            
-            # Renderizar o mapa
-            map_data = st_folium(
-                m, 
-                width=None, 
-                height=600, 
-                returned_objects=["last_object_clicked"],
-                key="explorar_map"
-            )
-        else:
-            st.warning("⚠️ Nenhum dado LCZ disponível. Use o gerador LCZ4r acima para criar um mapa.")
-            st.info("💡 Dica: Digite o nome de uma cidade e clique em 'Gerar Mapa LCZ' para começar.")
-
+        titulo_personalizado = st.text_input(
+            "🏷️ Título do Mapa (opcional):",
+            placeholder="Ex: Zonas Climáticas Locais - Rio de Janeiro",
+            help="Deixe em branco para usar o título padrão"
+        )
+    
     with col2:
-        st.markdown("### 🎯 Instruções")
+        alta_resolucao = st.checkbox(
+            "📸 Alta Resolução",
+            value=True,
+            help="Gera imagem em 300 DPI para melhor qualidade"
+        )
+    
+    # Botão para gerar visualização
+    if st.button("🎨 Gerar Visualização", type="primary", width='stretch'):
+        gerar_visualizacao_matplotlib(titulo_personalizado, alta_resolucao)
+
+def gerar_visualizacao_matplotlib(titulo_personalizado=None, alta_resolucao=True):
+    """Gera visualização usando matplotlib e lcz_plot_map."""
+    
+    with st.spinner("Gerando visualização de alta qualidade..."):
+        try:
+            # Carregar dados raster
+            raster_path = "LCZ4r_output/lcz_map.tif"
+            with rasterio.open(raster_path) as src:
+                data = src.read(1)
+                profile = src.profile
+            
+            # Configurar parâmetros
+            figsize = (16, 12) if alta_resolucao else (12, 8)
+            dpi = 300 if alta_resolucao else 150
+            
+            # Configurar título
+            titulo = titulo_personalizado if titulo_personalizado else "Mapa de Zonas Climáticas Locais (LCZ)"
+            
+            # Gerar visualização usando lcz_plot_map
+            plt.figure(figsize=figsize, dpi=dpi)
+            fig = lcz_plot_map(
+                (data, profile),
+                title=titulo,
+                show_legend=True,
+                isave=False  # Não salvar automaticamente
+            )
+            
+            # Salvar em buffer para exibição
+            buf = BytesIO()
+            plt.savefig(buf, format='png', dpi=dpi, bbox_inches='tight', 
+                       facecolor='white', edgecolor='none')
+            buf.seek(0)
+            
+            # Exibir a imagem
+            st.markdown("#### 🖼️ Visualização Gerada")
+            st.image(buf, caption=titulo, width='stretch')
+            
+            # Salvar arquivo para download
+            output_path = "LCZ4r_output/lcz_plot_map.png"
+            plt.savefig(output_path, format='png', dpi=dpi, bbox_inches='tight',
+                       facecolor='white', edgecolor='none')
+            
+            # Botões de download
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Download da imagem PNG
+                with open(output_path, "rb") as f:
+                    st.download_button(
+                        label="📸 Baixar Imagem PNG",
+                        data=f.read(),
+                        file_name="lcz_plot_map.png",
+                        mime="image/png",
+                        help="Imagem do mapa LCZ em alta resolução",
+                        width='stretch'
+                    )
+            
+            with col2:
+                # Download do arquivo raster
+                raster_path = "LCZ4r_output/lcz_map.tif"
+                if os.path.exists(raster_path):
+                    with open(raster_path, "rb") as f:
+                        st.download_button(
+                            label="🗺️ Baixar Raster TIF",
+                            data=f.read(),
+                            file_name="lcz_map.tif",
+                            mime="image/tiff",
+                            help="Arquivo raster do mapa LCZ para análises GIS",
+                            width='stretch'
+                        )
+            
+            plt.close(fig)  # Liberar memória
+            st.success("✅ Visualização gerada com sucesso!")
+            
+        except Exception as e:
+            st.error(f"❌ Erro ao gerar visualização: {str(e)}")
+
+def renderizar_mapa_folium():
+    """Renderiza o mapa interativo com Folium."""
+    
+    try:
+        # Carregar dados GeoJSON
+        gdf_lcz = gpd.read_file("data/map_lcz.geojson")
+        
+        if gdf_lcz.empty:
+            st.warning("⚠️ Dados LCZ não encontrados.")
+            return
+        
+        # Calcular centro do mapa
+        bounds = gdf_lcz.total_bounds
+        center_lat = (bounds[1] + bounds[3]) / 2
+        center_lon = (bounds[0] + bounds[2]) / 2
+        
+        # Criar mapa base
+        m = folium.Map(
+            location=[center_lat, center_lon],
+            zoom_start=11,
+            tiles='OpenStreetMap'
+        )
+        
+        # Definir cores para as classes LCZ
+        cores_lcz = {
+            'LCZ 1': '#8B0000', 'LCZ 2': '#CD5C5C', 'LCZ 3': '#F0E68C',
+            'LCZ 4': '#FFD700', 'LCZ 5': '#FFA500', 'LCZ 6': '#FF8C00',
+            'LCZ 7': '#FF6347', 'LCZ 8': '#FF4500', 'LCZ 9': '#DC143C',
+            'LCZ 10': '#B22222', 'LCZ A': '#228B22', 'LCZ B': '#32CD32',
+            'LCZ C': '#90EE90', 'LCZ D': '#98FB98', 'LCZ E': '#AFEEEE',
+            'LCZ F': '#87CEEB', 'LCZ G': '#4682B4'
+        }
+        
+        # Adicionar camada GeoJSON
+        for idx, row in gdf_lcz.iterrows():
+            classe = row.get('zcl_classe', 'Desconhecida')
+            cor = cores_lcz.get(classe, '#808080')
+            
+            folium.GeoJson(
+                    row.geometry,
+                    style_function=lambda feature, color=cor: {
+                        'fillColor': color,
+                        'color': 'black',
+                        'weight': 1,
+                        'fillOpacity': 0.7,
+                        'opacity': 0.8
+                    },
+                    popup=folium.Popup(
+                        f"""
+                        <div style='width: 200px'>
+                        <h4>{classe}</h4>
+                        <p><b>Características:</b></p>
+                        <p>{row.get('descricao', 'Sem descrição disponível')}</p>
+                        <p><b>Efeito Térmico:</b> {row.get('efeito_temp', 'Não disponível')}</p>
+                        <p><b>Ilha de Calor:</b> {row.get('ilha_calor', 'Não disponível')}</p>
+                        <p><b>Intervenção Recomendada:</b> {row.get('intervencao', 'Não disponível')}</p>
+                        </div>
+                        """,
+                        max_width=250
+                    )
+                ).add_to(m)
+        
+        # Ajustar zoom aos dados
+        m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+        
+        # Adicionar controles
+        folium.LayerControl().add_to(m)
+        
+        # Instruções de uso
         st.markdown("""
+        #### 🎯 Instruções
+        
         **Como usar:**
-        1. 🚀 **Gerar novo mapa:** Use o gerador LCZ4r acima
-        2. 🗂️ **Selecionar camadas:** Ative/desative na barra lateral
-        3. 🖱️ **Explorar:** Clique nos elementos do mapa
+        1. 🖱️ **Gerar novo mapa:** Use o gerador LCZ4r acima
+        2. 📍 **Selecionar camadas:** Ative/desative na barra lateral  
+        3. ✨ **Explorar:** Clique nos elementos do mapa
         4. 🔍 **Zoom:** Use os controles para diferentes escalas
         """)
         
-        # Mostrar informações do último clique
-        if 'map_data' in locals() and map_data and map_data.get("last_object_clicked"):
-            st.markdown("### 📍 Último Clique")
-            clicked_data = map_data["last_object_clicked"]
-            if clicked_data:
-                st.json(clicked_data)
+        # Exibir mapa
+        map_data = st_folium(m, width=700, height=500, returned_objects=["last_object_clicked"])
         
-        # Estatísticas rápidas
-        st.markdown("### 📊 Estatísticas Rápidas")
+        # Exibir informações do clique
+        if map_data['last_object_clicked']:
+            st.info(f"🎯 Último elemento clicado: {map_data['last_object_clicked']}")
         
-        if gdf_zcl is not None and not gdf_zcl.empty:
-            num_zcl = len(gdf_zcl['zcl_classe'].unique())
-            st.metric("Classes de ZCL", num_zcl)
+        # Estatísticas do mapa
+        with st.expander("📊 Estatísticas do Mapa", expanded=False):
+            col1, col2, col3 = st.columns(3)
             
-            if 'area_km2' in gdf_zcl.columns:
-                area_total = gdf_zcl['area_km2'].sum()
+            with col1:
+                st.metric("Classes LCZ", len(gdf_lcz['zcl_classe'].unique()))
+            
+            with col2:
+                st.metric("Total de Polígonos", len(gdf_lcz))
+            
+            with col3:
+                area_total = gdf_lcz['area_km2'].sum() if 'area_km2' in gdf_lcz.columns else 0
                 st.metric("Área Total", f"{area_total:.1f} km²")
             
-        if gdf_temp is not None and not gdf_temp.empty:
-            temp_media = gdf_temp['temperatura_c'].mean()
-            st.metric("Temp. Média", f"{temp_media:.1f}°C")
-
-    # Seção de legenda expandida
-    with st.expander("📖 Legenda Detalhada das Zonas Climáticas Locais"):
-        st.markdown("""
-        ### Zonas Construídas (Built Types)
-        - **LCZ 1 - Compact high-rise:** Edifícios altos e compactos
-        - **LCZ 2 - Compact midrise:** Edifícios de altura média e compactos  
-        - **LCZ 3 - Compact low-rise:** Edifícios baixos e compactos
-        - **LCZ 4 - Open high-rise:** Edifícios altos com espaços abertos
-        - **LCZ 5 - Open midrise:** Edifícios de altura média com espaços abertos
-        - **LCZ 6 - Open low-rise:** Edifícios baixos com espaços abertos
-        - **LCZ 7 - Lightweight low-rise:** Edifícios baixos e leves
-        - **LCZ 8 - Large low-rise:** Edifícios baixos e extensos
-        - **LCZ 9 - Sparsely built:** Construções esparsas
-        - **LCZ 10 - Heavy industry:** Indústria pesada
+            # Distribuição por classe
+            if 'zcl_classe' in gdf_lcz.columns:
+                st.markdown("**Distribuição por Classe LCZ:**")
+                distribuicao = gdf_lcz['zcl_classe'].value_counts()
+                st.bar_chart(distribuicao)
         
-        ### Cobertura Natural (Land Cover Types)
-        - **LCZ A - Dense trees:** Árvores densas
-        - **LCZ B - Scattered trees:** Árvores esparsas
-        - **LCZ C - Bush, scrub:** Arbustos e vegetação baixa
-        - **LCZ D - Low plants:** Plantas baixas
-        - **LCZ E - Bare rock or paved:** Rocha nua ou pavimentado
-        - **LCZ F - Bare soil or sand:** Solo nu ou areia
-        - **LCZ G - Water:** Corpos d'água
-        """)
-
-    # Informações sobre LCZ4r
-    with st.expander("ℹ️ Sobre o LCZ4r"):
-        st.markdown("""
-        ### 🔬 LCZ4r - Local Climate Zone for R
-        
-        **LCZ4r** é uma ferramenta científica desenvolvida para processamento automatizado de Zonas Climáticas Locais (LCZ). 
-        
-        **Características principais:**
-        - 🌍 **Cobertura global:** Processa qualquer cidade do mundo
-        - 📊 **Alta resolução:** Dados de 100m de resolução espacial
-        - 🔬 **Base científica:** Baseado na metodologia Stewart & Oke (2012)
-        - 🚀 **Processamento automático:** Download e processamento em tempo real
-        - 💾 **Formato padrão:** Saída em GeoJSON para máxima compatibilidade
-        
-        **Fonte de dados:** 
-        - Mapa global LCZ v3 (Demuzere et al., 2022)
-        - Disponível em: https://zenodo.org/records/8419340
-        
-        **Desenvolvido por:** Max Anjos  
-        **GitHub:** https://github.com/ByMaxAnjos/LCZ4r
-        """)
-
-    # Dicas de uso
-    st.markdown("""
-    ---
-    ### 💡 Dicas de Uso
-    
-    - **🌍 Explore globalmente:** Teste diferentes cidades ao redor do mundo
-    - **🔄 Compare dados:** Gere mapas para cidades similares e compare padrões
-    - **📊 Combine camadas:** Ative tanto ZCL quanto temperatura para análises integradas
-    - **🔍 Analise escalas:** Use zoom para estudar desde regiões metropolitanas até quarteirões
-    - **➡️ Próximo passo:** Vá para "Investigar" para análises detalhadas ou "Simular" para testar intervenções
-    """)
-
-
-    # Seção para Visualizar LCZ Map
-    st.markdown("---")
-    from utils.lcz_visualizer import renderizar_secao_visualizar_lcz
-    renderizar_secao_visualizar_lcz()
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar mapa: {str(e)}")

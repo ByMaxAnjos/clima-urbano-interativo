@@ -96,7 +96,7 @@ with st.container():
             "bar-chart", 
             "cpu", 
             "award",
-            "about",
+            "award",
         ],
         menu_icon="cast",
         default_index=0,

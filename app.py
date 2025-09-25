@@ -1,9 +1,10 @@
 # app.py - Plataforma Clima Urbano Interativo
 
 import streamlit as st
+from streamlit_option_menu import option_menu
 import os
 from modules import inicio, explorar, investigar, visualizar, simular, avaliacao, info
-from utils import processamento, simulacao
+from utils import processamento, simulacao, lcz4r, lcz_visualizer
 
 # Configuração da página
 st.set_page_config(
@@ -74,68 +75,67 @@ except Exception as e:
     st.error(f"❌ Erro ao carregar dados base: {e}")
     st.stop()
 
-# Barra Lateral de Navegação
-with st.sidebar:
-    # Logo e título
-    st.markdown("""
-    <div style="text-align: center; padding: 1rem 0;">
-        <h1 style="color: #2E86AB; margin: 0;">🌍</h1>
-        <h2 style="color: #2E86AB; margin: 0; font-size: 1.5rem;">Clima Urbano</h2>
-        <p style="color: #7F8C8D; margin: 0; font-size: 0.9rem;">Plataforma Interativa</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # Menu de navegação
-    st.markdown("### 📋 Sequência Didática")
-    
-    # Usar radio button para navegação
-    pagina_selecionada = st.radio(
-        "Selecione um módulo:",
-        ["Início", "Explorar", "Investigar", "Visualizar", "Simular", "Avaliar plataforma", "Informações"],
-        index=["Início", "Explorar", "Investigar", "Visualizar", "Simular", "Avaliar plataforma", "Informações"].index(st.session_state.navigation),
-        key="nav_radio"
+# Navigation
+# --- MENU COM GLASSMORPHISM ---
+with st.container():
+    pagina_selecionada = option_menu(
+        menu_title=None,
+        options=[
+            "Início", 
+            "Explorar", 
+            "Investigar", 
+            "Visualizar", 
+            "Simular", 
+            "Avaliar plataforma",
+            "Informações"
+        ],
+        icons=[
+            "house", 
+            "cloud-upload", 
+            "search", 
+            "bar-chart", 
+            "cpu", 
+            "award",
+            "about",
+        ],
+        menu_icon="cast",
+        default_index=0,
+        orientation="horizontal",
+        styles={
+            "container": {
+                "padding": "0.7rem 1rem",
+                "background": "rgba(255, 255, 255, 0.25)",
+                "backdrop-filter": "blur(12px)",   # efeito vidro
+                "border-radius": "var(--border-radius-xl)",
+                "box-shadow": "0 8px 32px 0 rgba(31, 38, 135, 0.37)",
+                "margin-bottom": "2rem"
+            },
+            "icon": {
+                "color": "var(--primary-color)", 
+                "font-size": "18px"
+            },
+            "nav-link": {
+                "font-size": "1rem", 
+                "font-weight": "600",
+                "letter-spacing": "0.5px", 
+                "text-transform": "uppercase",
+                "margin": "0px 8px", 
+                "padding": "14px 20px",
+                "color": "var(--text-secondary)", 
+                "--hover-color": "rgba(255, 255, 255, 0.15)",
+                "border-radius": "var(--border-radius-lg)",
+                "transition": "var(--transition)"
+            },
+            "nav-link-selected": {
+                "background": "linear-gradient(135deg, rgba(102,126,234,0.8), rgba(118,75,162,0.8))",
+                "color": "white",
+                "border-radius": "var(--border-radius-lg)",
+                "box-shadow": "var(--shadow-md)",
+                "text-shadow": "0 1px 3px rgba(0,0,0,0.3)"
+            },
+        }
     )
-    
-    # Atualizar estado da navegação
-    if pagina_selecionada != st.session_state.navigation:
-        st.session_state.navigation = pagina_selecionada
-        st.rerun()
-    
-    st.markdown("---")
-    
-    # Status da análise
-    st.markdown("### 📊 Status da Análise")
-    
-    # Indicadores de status
-    if st.session_state.get('dados_usuario') is not None:
-        st.success("✅ Dados carregados")
-        num_pontos = len(st.session_state['dados_usuario'])
-        st.metric("Pontos", num_pontos)
-    else:
-        st.info("⏳ Sem dados")
-    
-    if st.session_state.get('area_de_interesse') is not None:
-        st.success("✅ Área definida")
-    else:
-        st.info("⏳ Sem área")
-    
-    if st.session_state.get('analise_pronta'):
-        st.success("✅ Análise pronta")
-    else:
-        st.info("⏳ Sem análise")
-    
-    st.markdown("---")
-    
-    # Informações da versão
-    st.markdown("""
-    <div style="text-align: center; color: #7F8C8D; font-size: 0.8rem;">
-        <p><strong>Versão:</strong> 2.0</p>
-        <p><strong>Fase:</strong> Análise Interativa</p>
-        <p><strong>Dados:</strong> São Paulo (Exemplo)</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.session_state.navigation = pagina_selecionada
 
 # Área principal - Roteamento de páginas
 if pagina_selecionada == "Início":

@@ -6,4 +6,9 @@ streamlit-folium>=0.25.0
 plotly>=5.0.0
 shapely>=2.0.0
 branca>=0.8.0
-
+streamlit-option-menu>=0.3.12
+# Dependências para LCZ4r
+osmnx
+matplotlib
+rasterio
+requests

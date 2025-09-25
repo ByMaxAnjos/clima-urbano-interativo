@@ -98,7 +98,7 @@ def renderizar_pagina():
 def get_logo_base64():
     """Retorna o logo LCZ4r em base64."""
     try:
-        logo_path = "assets/images/lcz4r_logo.png"
+        logo_path = "assets/lcz4r_logo.png"
         if os.path.exists(logo_path):
             with open(logo_path, "rb") as f:
                 return base64.b64encode(f.read()).decode()

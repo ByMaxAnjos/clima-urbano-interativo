@@ -12,3 +12,4 @@ osmnx
 matplotlib
 rasterio
 requests
+kaleido

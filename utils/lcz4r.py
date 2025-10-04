@@ -120,220 +120,105 @@ LCZ_INFO = pd.DataFrame({
 
 def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False):
     """
-    Download e processamento do mapa global de Zonas Climáticas Locais (LCZ)
-    com tratamento robusto de erros de conexão e geocodificação aprimorada.
+    Download and process the Local Climate Zone (LCZ) global mapping dataset
+    directly from a URL without saving the full file locally.
 
     Parameters
     ----------
     city : str, optional
-        Nome da cidade para busca no OpenStreetMap
+        The name of your target area based on the OpenStreetMap project.
     roi : geopandas.GeoDataFrame, optional
-        Região de interesse em formato GeoDataFrame
+        A Region of Interest (ROI) in GeoDataFrame format to clip the LCZ map to a custom area.
     isave_map : bool, default False
-        Salvar mapa recortado como arquivo TIFF
+        Set to True if you wish to save the resulting clipped map as a raster TIFF file.
     isave_global : bool, default False
-        Salvar mapa global completo como arquivo TIFF
+        Set to True if you wish to save the global LCZ map as a raster TIFF file.
 
     Returns
     -------
     tuple
-        (dados numpy, perfil rasterio)
-        
-    Raises
-    ------
-    ValueError
-        Se nem city nem roi forem fornecidos
-    ConnectionError
-        Se houver falha na conexão com serviços externos
-    GeocodeError
-        Se a cidade não for encontrada no serviço de geocodificação
-    DataProcessingError
-        Se houver erro no processamento dos dados LCZ
+        A tuple containing (data, profile) where:
+        - data: numpy array with LCZ classes (1-17)
+        - profile: rasterio profile dictionary with metadata
+
+    References
+    ----------
+    Demuzere, M., et al. (2022). A global map of Local Climate Zones to support earth system modelling and urban scale environmental science.
+    Earth Syst. Sci. Data 14(8) 3835-3873. DOI:https://doi.org/10.5194/essd-14-3835-2022
+    Zenodo. https://doi.org/10.5281/zenodo.6364594
+    Stewart ID, Oke TR. (2012). Local Climate Zones for Urban Temperature Studies.
+    Bull Am Meteorol Soc. 93(12):1879-1900. doi:10.1175/BAMS-D-11-00019.1
     """
+
+    # Validate inputs
     if city is None and roi is None:
-        raise ValueError("Forneça um nome de cidade ou um polígono ROI")
+        raise ValueError("Error: provide either a city name or a roi polygon")
 
+    # LCZ map URL
     lcz_url = "https://zenodo.org/records/8419340/files/lcz_filter_v3.tif?download=1"
-    max_retries = 5  # Aumentado para melhor robustez
-    geocode_retries = 3  # Tentativas específicas para geocodificação
-    
-    # Variáveis para controle de erro
-    geocode_success = False
-    study_area_gdf = None
-    last_geocode_error = None
-    
-    # Etapa 1: Geocodificação (se necessário)
-    if city is not None:
-        for geocode_attempt in range(geocode_retries):
+
+    # Open the global raster directly from the URL using the /vsicurl/ virtual file system
+    try:
+        with rasterio.open(f'/vsicurl/{lcz_url}') as src:
+            src_profile = src.profile
+
+            # Use the most robust method: mask and crop in a single step
+            if city is not None:
+                try:
+                    # Get geometry from city name and ensure CRS matches the raster
+                    study_area = ox.geocode_to_gdf(city).to_crs(src.crs)
+                    geometries = [study_area.iloc[0].geometry]
+                except Exception as e:
+                    raise Exception(f"No polygonal boundary found for {city}. Error: {str(e)}")
+            else: # roi is provided
+                # Ensure ROI's CRS matches the raster's CRS
+                if roi.crs != src.crs:
+                    roi = roi.to_crs(src.crs)
+                geometries = roi.geometry
+
+            # Crop and mask the raster in a single, efficient step, setting a new nodata value
             try:
-                print(f"Geocodificação - Tentativa {geocode_attempt + 1}: Buscando '{city}'...")
-                
-                # Configurar timeout e user agent para OSMnx
-                ox.settings.timeout = 30
-                ox.settings.requests_timeout = 30
-                
-                # Tentar geocodificação com diferentes estratégias
-                if geocode_attempt == 0:
-                    # Primeira tentativa: busca direta
-                    study_area_gdf = ox.geocode_to_gdf(city)
-                elif geocode_attempt == 1:
-                    # Segunda tentativa: adicionar país se não especificado
-                    if ',' not in city:
-                        study_area_gdf = ox.geocode_to_gdf(f"{city}, Brazil")
-                    else:
-                        study_area_gdf = ox.geocode_to_gdf(city)
-                else:
-                    # Terceira tentativa: busca mais específica
-                    study_area_gdf = ox.geocode_to_gdf(f"{city} city")
-                
-                geocode_success = True
-                print(f"Geocodificação bem-sucedida para '{city}'")
-                break
-                
+                # Set a new nodata value (e.g., 255) to avoid conflict with LCZ classes
+                new_nodata_value = 255
+                out_image, out_transform = mask(src, geometries, crop=True, all_touched=True, nodata=new_nodata_value)
+                data = out_image[0]  # Get the single band of data
+                transform = out_transform
             except Exception as e:
-                last_geocode_error = e
-                print(f"Erro na geocodificação (tentativa {geocode_attempt + 1}): {str(e)}")
-                
-                if geocode_attempt < geocode_retries - 1:
-                    wait_time = 2 ** geocode_attempt + 1
-                    print(f"Aguardando {wait_time} segundos antes da próxima tentativa...")
-                    time.sleep(wait_time)
-        
-        if not geocode_success:
-            raise GeocodeError(
-                f"Não foi possível encontrar a cidade '{city}'. "
-                f"Verifique se o nome está correto e tente variações como "
-                f"'{city}, Brazil' ou '{city} city'. "
-                f"Último erro: {str(last_geocode_error)}"
-            )
-    else:
-        study_area_gdf = roi
-        geocode_success = True
-    
-    # Etapa 2: Download e processamento do mapa LCZ
-    for attempt in range(max_retries):
-        try:
-            print(f"Download LCZ - Tentativa {attempt + 1}: Acessando mapa global...")
-            
-            # Configurar timeout para rasterio
-            import rasterio.env
-            with rasterio.env.Env(GDAL_HTTP_TIMEOUT=60, GDAL_HTTP_CONNECTTIMEOUT=30):
-                with rasterio.open(f"/vsicurl/{lcz_url}") as src:
-                    print("Mapa LCZ global acessado com sucesso.")
-                    
-                    # Garantir que o CRS seja o mesmo
-                    if study_area_gdf.crs != src.crs:
-                        print("Reprojetando geometria para o CRS do raster...")
-                        study_area_gdf = study_area_gdf.to_crs(src.crs)
-                    
-                    geometries = study_area_gdf.geometry
-                    
-                    # Verificar se a geometria está dentro dos limites do raster
-                    raster_bounds = src.bounds
-                    geom_bounds = study_area_gdf.total_bounds
-                    
-                    if not (raster_bounds.left <= geom_bounds[2] and 
-                           raster_bounds.bottom <= geom_bounds[3] and
-                           raster_bounds.right >= geom_bounds[0] and 
-                           raster_bounds.top >= geom_bounds[1]):
-                        print("Aviso: A geometria pode estar parcialmente fora dos limites do raster LCZ")
+                raise Exception(f"Failed to crop and mask raster: {str(e)}")
 
-                    # Recortar raster
-                    print("Recortando raster para a área de interesse...")
-                    new_nodata = 255
-                    out_image, out_transform = mask(
-                        src, geometries, crop=True, all_touched=True, nodata=new_nodata
-                    )
-                    data = out_image[0]
-                    
-                    # Verificar se há dados válidos
-                    valid_data = data[data != new_nodata]
-                    if len(valid_data) == 0:
-                        raise DataProcessingError(
-                            f"Nenhum dado LCZ válido encontrado para '{city}'. "
-                            "A área pode estar fora da cobertura do mapa LCZ global ou "
-                            "o nome da cidade pode estar incorreto."
-                        )
-                    
-                    print(f"Recorte concluído. Dados válidos: {len(valid_data)} pixels")
+            # Update profile for output raster
+            output_profile = src_profile.copy()
+            output_profile.update({
+                'height': data.shape[0],
+                'width': data.shape[1],
+                'transform': transform,
+                'dtype': data.dtype,
+                'nodata': new_nodata_value # Set the new nodata value in the profile
+            })
 
-                    # Atualizar perfil
-                    profile = src.profile.copy()
-                    profile.update({
-                        "height": data.shape[0],
-                        "width": data.shape[1],
-                        "transform": out_transform,
-                        "nodata": new_nodata
-                    })
+            # Save outputs if requested
+            if isave_map or isave_global:
+                output_dir = "LCZ4r_output"
+                os.makedirs(output_dir, exist_ok=True)
 
-                    # Salvar arquivos se solicitado
-                    if isave_map or isave_global:
-                        os.makedirs("LCZ4r_output", exist_ok=True)
-                        if isave_map:
-                            output_path = "LCZ4r_output/lcz_map.tif"
-                            with rasterio.open(output_path, "w", **profile) as dst:
-                                dst.write(data, 1)
-                            print(f"Mapa salvo: {os.path.abspath(output_path)}")
-                        if isave_global:
-                            global_path = "LCZ4r_output/lcz_global_map.tif"
-                            with requests.get(lcz_url, stream=True, timeout=120) as r:
-                                r.raise_for_status()
-                                with open(global_path, "wb") as f:
-                                    shutil.copyfileobj(r.raw, f)
-                            print(f"Mapa global salvo: {os.path.abspath(global_path)}")
+                if isave_map:
+                    output_path = os.path.join(output_dir, "lcz_map.tif")
+                    with rasterio.open(output_path, 'w', **output_profile) as dst:
+                        dst.write(data, 1)
+                    print(f"Map saved to: {os.path.abspath(output_path)}")
 
-                    return data, profile
+                if isave_global:
+                    global_output_path = os.path.join(output_dir, "lcz_global_map.tif")
+                    # Use requests to download the global file, as it's the simplest way for a direct copy
+                    import shutil
+                    with requests.get(lcz_url, stream=True) as r, open(global_output_path, 'wb') as f:
+                        shutil.copyfileobj(r.raw, f)
+                    print(f"Global map saved to: {os.path.abspath(global_output_path)}")
 
-        except (requests.exceptions.ConnectionError, 
-                requests.exceptions.Timeout,
-                NewConnectionError,
-                rasterio.errors.RasterioIOError) as e:
-            print(f"Erro de conexão/rede na tentativa {attempt + 1}: {str(e)}")
-            if attempt < max_retries - 1:
-                backoff_time = min(2 ** (attempt + 1), 30)  # Máximo de 30 segundos
-                print(f"Aguardando {backoff_time} segundos antes de tentar novamente...")
-                time.sleep(backoff_time)
-            else:
-                raise ConnectionError(
-                    "Falha na conexão com o serviço de dados LCZ após múltiplas tentativas. "
-                    "Possíveis causas:\n"
-                    "• Conexão com a internet instável\n"
-                    "• Serviço temporariamente indisponível\n"
-                    "• Firewall bloqueando o acesso\n"
-                    "Tente novamente em alguns minutos."
-                )
-        except Exception as e:
-            error_msg = str(e)
-            if "No such file or directory" in error_msg or "404" in error_msg:
-                raise DataProcessingError(
-                    "O arquivo de dados LCZ não está disponível no servidor. "
-                    "Tente novamente mais tarde."
-                )
-            elif "timeout" in error_msg.lower():
-                if attempt < max_retries - 1:
-                    print(f"Timeout na tentativa {attempt + 1}. Tentando novamente...")
-                    time.sleep(5)
-                    continue
-                else:
-                    raise ConnectionError(
-                        "Timeout na conexão com o serviço de dados LCZ. "
-                        "Verifique sua conexão com a internet."
-                    )
-            else:
-                raise DataProcessingError(f"Erro no processamento dos dados LCZ: {error_msg}")
+            return data, output_profile
 
-    # Se o loop terminar sem sucesso
-    raise ConnectionError("Não foi possível processar o mapa LCZ devido a problemas de conexão.")
-
-
-# Exceções personalizadas para melhor tratamento de erros
-class GeocodeError(Exception):
-    """Exceção para erros de geocodificação."""
-    pass
-
-class DataProcessingError(Exception):
-    """Exceção para erros no processamento de dados."""
-    pass
+    except Exception as e:
+        raise Exception(f"Failed to open or process LCZ map from URL: {str(e)}")
 
 def lcz_plot_map(x, isave=False, show_legend=True, save_extension="png", 
                  inclusive=False, figsize=(12, 8), **kwargs):

@@ -25,8 +25,6 @@ import osmnx as ox
 from shapely.geometry import box, shape
 import requests
 import shutil
-import time
-from urllib3.exceptions import NewConnectionError
 
 # Configurações
 warnings.filterwarnings("ignore")
@@ -121,104 +119,172 @@ LCZ_INFO = pd.DataFrame({
 def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False):
     """
     Download and process the Local Climate Zone (LCZ) global mapping dataset
-    directly from a URL without saving the full file locally.
+    directly from a URL without saving the full file locally, with improved error handling.
 
     Parameters
     ----------
     city : str, optional
-        The name of your target area based on the OpenStreetMap project.
+        Nome da cidade para busca no OpenStreetMap
     roi : geopandas.GeoDataFrame, optional
-        A Region of Interest (ROI) in GeoDataFrame format to clip the LCZ map to a custom area.
+        Região de interesse em formato GeoDataFrame
     isave_map : bool, default False
-        Set to True if you wish to save the resulting clipped map as a raster TIFF file.
+        Salvar mapa recortado como arquivo TIFF
     isave_global : bool, default False
-        Set to True if you wish to save the global LCZ map as a raster TIFF file.
+        Salvar mapa global completo como arquivo TIFF
 
     Returns
     -------
     tuple
-        A tuple containing (data, profile) where:
-        - data: numpy array with LCZ classes (1-17)
-        - profile: rasterio profile dictionary with metadata
+        (dados numpy, perfil rasterio)
 
-    References
-    ----------
-    Demuzere, M., et al. (2022). A global map of Local Climate Zones to support earth system modelling and urban scale environmental science.
-    Earth Syst. Sci. Data 14(8) 3835-3873. DOI:https://doi.org/10.5194/essd-14-3835-2022
-    Zenodo. https://doi.org/10.5281/zenodo.6364594
-    Stewart ID, Oke TR. (2012). Local Climate Zones for Urban Temperature Studies.
-    Bull Am Meteorol Soc. 93(12):1879-1900. doi:10.1175/BAMS-D-11-00019.1
+    Raises
+    ------
+    ValueError
+        Se nem city nem roi forem fornecidos
+    ConnectionError
+        Se houver falha na conexão com serviços externos (atualizada para ser mais específica)
+    GeocodeError
+        Se a cidade não for encontrada no serviço de geocodificação
+    DataProcessingError
+        Se houver erro no processamento dos dados LCZ
     """
-
-    # Validate inputs
     if city is None and roi is None:
         raise ValueError("Error: provide either a city name or a roi polygon")
 
-    # LCZ map URL
     lcz_url = "https://zenodo.org/records/8419340/files/lcz_filter_v3.tif?download=1"
+    max_retries = 3 # Reduced for faster failure on persistent issues
+    geocode_retries = 2 # Reduced for faster failure on persistent issues
 
-    # Open the global raster directly from the URL using the /vsicurl/ virtual file system
-    try:
-        with rasterio.open(f'/vsicurl/{lcz_url}') as src:
-            src_profile = src.profile
-
-            # Use the most robust method: mask and crop in a single step
-            if city is not None:
-                try:
-                    # Get geometry from city name and ensure CRS matches the raster
-                    study_area = ox.geocode_to_gdf(city).to_crs(src.crs)
-                    geometries = [study_area.iloc[0].geometry]
-                except Exception as e:
-                    raise Exception(f"No polygonal boundary found for {city}. Error: {str(e)}")
-            else: # roi is provided
-                # Ensure ROI's CRS matches the raster's CRS
-                if roi.crs != src.crs:
-                    roi = roi.to_crs(src.crs)
-                geometries = roi.geometry
-
-            # Crop and mask the raster in a single, efficient step, setting a new nodata value
+    # Etapa 1: Geocodificação (se necessário)
+    study_area_gdf = None
+    if city is not None:
+        for geocode_attempt in range(geocode_retries):
             try:
-                # Set a new nodata value (e.g., 255) to avoid conflict with LCZ classes
-                new_nodata_value = 255
-                out_image, out_transform = mask(src, geometries, crop=True, all_touched=True, nodata=new_nodata_value)
-                data = out_image[0]  # Get the single band of data
-                transform = out_transform
+                print(f"Geocodificação - Tentativa {geocode_attempt + 1}: Buscando '{city}'...")
+                ox.settings.timeout = 30
+                ox.settings.requests_timeout = 30
+                study_area_gdf = ox.geocode_to_gdf(city)
+                print(f"Geocodificação bem-sucedida para '{city}'")
+                break # Exit loop on success
             except Exception as e:
-                raise Exception(f"Failed to crop and mask raster: {str(e)}")
+                last_geocode_error = e
+                print(f"Erro na geocodificação (tentativa {geocode_attempt + 1}): {str(e)}")
+                if geocode_attempt < geocode_retries - 1:
+                    wait_time = 2 ** geocode_attempt + 1
+                    print(f"Aguardando {wait_time} segundos antes da próxima tentativa...")
+                    time.sleep(wait_time)
+                else:
+                     raise GeocodeError(
+                        f"Não foi possível encontrar a cidade '{city}' após {geocode_retries} tentativas. "
+                        f"Último erro: {str(last_geocode_error)}"
+                    )
+    else:
+        study_area_gdf = roi
 
-            # Update profile for output raster
-            output_profile = src_profile.copy()
-            output_profile.update({
-                'height': data.shape[0],
-                'width': data.shape[1],
-                'transform': transform,
-                'dtype': data.dtype,
-                'nodata': new_nodata_value # Set the new nodata value in the profile
-            })
+    # Etapa 2: Download e processamento do mapa LCZ
+    for attempt in range(max_retries):
+        try:
+            print(f"Download LCZ - Tentativa {attempt + 1}: Acessando mapa global...")
 
-            # Save outputs if requested
-            if isave_map or isave_global:
-                output_dir = "LCZ4r_output"
-                os.makedirs(output_dir, exist_ok=True)
+            # Use rasterio.env.Env for GDAL config
+            with rasterio.env.Env(GDAL_HTTP_TIMEOUT=60, GDAL_HTTP_CONNECTTIMEOUT=30):
+                with rasterio.open(f"/vsicurl/{lcz_url}") as src:
+                    print("Mapa LCZ global acessado com sucesso.")
 
-                if isave_map:
-                    output_path = os.path.join(output_dir, "lcz_map.tif")
-                    with rasterio.open(output_path, 'w', **output_profile) as dst:
-                        dst.write(data, 1)
-                    print(f"Map saved to: {os.path.abspath(output_path)}")
+                    # Ensure CRS match and reproject if necessary
+                    if study_area_gdf.crs != src.crs:
+                        print("Reprojetando geometria para o CRS do raster...")
+                        study_area_gdf = study_area_gdf.to_crs(src.crs)
 
-                if isave_global:
-                    global_output_path = os.path.join(output_dir, "lcz_global_map.tif")
-                    # Use requests to download the global file, as it's the simplest way for a direct copy
-                    import shutil
-                    with requests.get(lcz_url, stream=True) as r, open(global_output_path, 'wb') as f:
-                        shutil.copyfileobj(r.raw, f)
-                    print(f"Global map saved to: {os.path.abspath(global_output_path)}")
+                    geometries = study_area_gdf.geometry
 
-            return data, output_profile
+                    # Recortar raster using mask
+                    print("Recortando raster para a área de interesse...")
+                    new_nodata = 255
+                    out_image, out_transform = mask(
+                        src, geometries, crop=True, all_touched=True, nodata=new_nodata
+                    )
+                    data = out_image[0]
 
-    except Exception as e:
-        raise Exception(f"Failed to open or process LCZ map from URL: {str(e)}")
+                    # Check for valid data
+                    valid_data = data[data != new_nodata]
+                    if len(valid_data) == 0:
+                         raise DataProcessingError(
+                            f"Nenhum dado LCZ válido encontrado para a área especificada. "
+                            "A área pode estar fora da cobertura do mapa LCZ global ou "
+                            "o nome/geometria fornecido pode ser incorreto."
+                        )
+
+                    print(f"Recorte concluído. Dados válidos: {len(valid_data)} pixels")
+
+
+                    # Update profile
+                    profile = src.profile.copy()
+                    profile.update({
+                        "height": data.shape[0],
+                        "width": data.shape[1],
+                        "transform": out_transform,
+                        "nodata": new_nodata
+                    })
+
+                    # Save files if requested
+                    if isave_map or isave_global:
+                        os.makedirs("LCZ4r_output", exist_ok=True)
+                        if isave_map:
+                            output_path = "LCZ4r_output/lcz_map.tif"
+                            with rasterio.open(output_path, "w", **profile) as dst:
+                                dst.write(data, 1)
+                            print(f"Mapa salvo: {os.path.abspath(output_path)}")
+                        if isave_global:
+                            global_path = "LCZ4r_output/lcz_global_map.tif"
+                            # Using requests and shutil for a direct download
+                            try:
+                                print(f"Baixando mapa global para {global_path}...")
+                                with requests.get(lcz_url, stream=True, timeout=120) as r:
+                                    r.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+                                    with open(global_path, "wb") as f:
+                                        shutil.copyfileobj(r.raw, f)
+                                print(f"Mapa global salvo: {os.path.abspath(global_path)}")
+                            except requests.exceptions.RequestException as req_e:
+                                print(f"Erro ao baixar mapa global: {req_e}")
+                                # Decide if this is a critical error or just for the save operation
+                                # For now, let's just print and continue without saving global
+                                pass
+
+
+                    return data, profile
+
+        except (requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                NewConnectionError,
+                rasterio.errors.RasterioIOError) as e:
+            print(f"Erro de conexão/rede na tentativa {attempt + 1}: {str(e)}")
+            if attempt < max_retries - 1:
+                backoff_time = min(2 ** (attempt + 1), 10) # Reduced max backoff
+                print(f"Aguardando {backoff_time} segundos antes de tentar novamente...")
+                time.sleep(backoff_time)
+            else:
+                raise ConnectionError(
+                    f"Falha na conexão com o serviço de dados LCZ após {max_retries} tentativas. "
+                    "Verifique sua conexão com a internet ou se o serviço está disponível."
+                )
+        except Exception as e:
+             # Catch other potential processing errors
+             raise DataProcessingError(f"Erro no processamento dos dados LCZ: {str(e)}")
+
+
+    # If the loop finishes without success
+    raise ConnectionError("Não foi possível processar o mapa LCZ devido a problemas de conexão.")
+
+
+# Exceções personalizadas para melhor tratamento de erros
+class GeocodeError(Exception):
+    """Exceção para erros de geocodificação."""
+    pass
+
+class DataProcessingError(Exception):
+    """Exceção para erros no processamento de dados."""
+    pass
 
 def lcz_plot_map(x, isave=False, show_legend=True, save_extension="png", 
                  inclusive=False, figsize=(12, 8), **kwargs):
@@ -463,340 +529,5 @@ def enhance_lcz_data(gdf):
     gdf["area_km2"] = gdf.geometry.area / 1e6
     
     print("Dados LCZ aprimorados com sucesso")
-    
     return gdf
 
-
-def lcz_cal_area(gdf, plot_type="bar", isave=False,
-                 save_extension="html", inclusive=False, **kwargs):
-    """
-    Calcula estatísticas de área para classes LCZ e gera um objeto Plotly para visualização.
-
-    Parameters
-    ----------
-    gdf : geopandas.GeoDataFrame
-        GeoDataFrame com dados LCZ contendo colunas 'zcl_classe' e geometria.
-    plot_type : str, default "bar"
-        Tipo de plot a gerar: "bar", "pie", ou "donut"
-    isave : bool, default False
-        Se True, salva o plot como arquivo (HTML para Plotly).
-    save_extension : str, default "html"
-        Formato do arquivo de saída para salvar o plot ("html", "json").
-    inclusive : bool, default False
-        Se True, usa uma paleta colorblind-friendly para o plot.
-    **kwargs : dict
-        Parâmetros adicionais para títulos (title, subtitle, caption, etc.)
-
-    Returns
-    -------
-    plotly.graph_objects.Figure
-        Um objeto Figura Plotly com o plot gerado.
-
-    Raises
-    ------
-    ValueError
-        Se gdf for vazio ou None, colunas obrigatórias estiverem ausentes,
-        ou plot_type for inválido.
-    """
-
-    if gdf is None or len(gdf) == 0:
-        raise ValueError("GeoDataFrame vazio ou None fornecido.")
-
-    # 1. Verificação de Colunas
-    required_cols = ['zcl_classe']
-    missing_cols = [col for col in required_cols if col not in gdf.columns]
-    if missing_cols:
-        raise ValueError(f"Colunas obrigatórias ausentes: {missing_cols}")
-
-    # 2. Cálculo da Área (se necessário)
-    gdf_work = gdf.copy()
-    if 'area_km2' not in gdf_work.columns:
-        # Reprojetar para um CRS apropriado para cálculo de área (Mollweide ou similar)
-        # O uso do CRS projetado garante precisão.
-        if gdf_work.crs and gdf_work.crs.is_geographic:
-            # Usar projeção equivalente de área global (ESRI:54009 - World Mollweide)
-            try:
-                gdf_work = gdf_work.to_crs('ESRI:54009')
-            except Exception as e:
-                 warnings.warn(f"Não foi possível reprojetar para ESRI:54009. Tentando EPSG:3857. Erro: {e}")
-                 try:
-                     gdf_work = gdf_work.to_crs('EPSG:3857') # Web Mercator as a common fallback
-                 except Exception as e2:
-                      raise RuntimeError(f"Falha ao reprojetar GeoDataFrame para cálculo de área: {e2}")
-
-
-        # Área em metros quadrados / 1 milhão = km²
-        # Use geometry.area in the projected CRS
-        gdf_work['area_km2'] = gdf_work.geometry.area / 1e6
-
-
-    # 3. Estatísticas por Classe LCZ
-    area_stats = gdf_work.groupby('zcl_classe').agg({
-        'area_km2': ['sum', 'count', 'mean', 'std', 'min', 'max']
-    }).round(3)
-
-    # Achatar colunas multi-nível
-    area_stats.columns = ['area_total_km2', 'num_poligonos', 'area_media_km2',
-                         'area_std_km2', 'area_min_km2', 'area_max_km2']
-    area_stats = area_stats.reset_index()
-
-    # 4. Cálculo de Percentuais
-    total_area = area_stats['area_total_km2'].sum()
-    area_stats['percentual'] = (area_stats['area_total_km2'] / total_area * 100).round(2)
-
-    # Ordenar por área total (decrescente)
-    area_stats = area_stats.sort_values('area_total_km2', ascending=False)
-
-    # 5. Preparar Dados para Plotagem (Plotly friendly)
-    # Manter o dicionário de cores fixo, essencial para a identidade visual
-    lcz_colors_dict = {
-        'LCZ 1': '#910613', 'LCZ 2': '#D9081C', 'LCZ 3': '#FF0A22',
-        'LCZ 4': '#C54F1E', 'LCZ 5': '#FF6628', 'LCZ 6': '#FF985E',
-        'LCZ 7': '#FDED3F', 'LCZ 8': '#BBBBBB', 'LCZ 9': '#FFCBAB',
-        'LCZ 10': '#565656', 'LCZ A': '#006A18', 'LCZ B': '#00A926',
-        'LCZ C': '#628432', 'LCZ D': '#B5DA7F', 'LCZ E': '#000000',
-        'LCZ F': '#FCF7B1', 'LCZ G': '#656BFA'
-    }
-
-    # Create a list of colors matching the sorted area_stats DataFrame
-    area_stats['color'] = area_stats['zcl_classe'].map(lcz_colors_dict)
-    # For inclusive palette, you might define a separate dictionary or logic here
-
-    # 6. Gerar Plotly Figure
-    fig = go.Figure()
-
-    if plot_type == "bar":
-        fig = go.Figure(go.Bar(
-            x=area_stats['zcl_classe'],
-            y=area_stats['area_total_km2'],
-            marker={'color': area_stats['color']},
-            text=area_stats['percentual'].astype(str) + '%',
-            textposition='outside',
-            hoverinfo='text',
-            hovertext=
-            '<b>LCZ Class</b>: ' + area_stats['zcl_classe'] + '<br>' +
-            '<b>Area (km²)</b>: ' + area_stats['area_total_km2'].astype(str) + '<br>' +
-            '<b>Percentage (%)</b>: ' + area_stats['percentual'].astype(str)
-        ))
-
-        fig.update_layout(
-            xaxis_title=kwargs.get('xlab', 'LCZ Class'),
-            yaxis_title=kwargs.get('ylab', 'Area [km2]'),
-            bargap=0.2
-        )
-
-    elif plot_type in ["pie", "donut"]:
-        # Filter out classes with 0 area for pie/donut
-        plot_df = area_stats[area_stats['area_total_km2'] > 0].copy()
-
-        if plot_type == "pie":
-             fig = go.Figure(go.Pie(
-                labels=plot_df['zcl_classe'],
-                values=plot_df['area_total_km2'],
-                marker={'colors': plot_df['color']},
-                hoverinfo='label+percent+value',
-                textinfo='percent+label',
-                insidetextorientation='radial'
-            ))
-
-        elif plot_type == "donut":
-            fig = go.Figure(go.Pie(
-                labels=plot_df['zcl_classe'],
-                values=plot_df['area_total_km2'],
-                marker={'colors': plot_df['color']},
-                hole=.3, # Create donut hole
-                hoverinfo='label+percent+value',
-                textinfo='percent+label',
-                insidetextorientation='radial'
-            ))
-            # Add total area text in the center for donut
-            fig.add_annotation(
-                text=f"Total:<br>{total_area:.0f} km²",
-                x=0.5, y=0.5, font_size=12, showarrow=False,
-                xanchor='center', yanchor='middle'
-            )
-
-
-    else:
-        raise ValueError("plot_type must be 'bar', 'pie', or 'donut'")
-
-    # Update layout for all plot types
-    fig.update_layout(
-        title_text=kwargs.get('title', 'LCZ Area Distribution'),
-        title_x=0.5,
-        legend_title='LCZ Class'
-    )
-
-    # Add subtitle if provided (as annotation)
-    if 'subtitle' in kwargs:
-         fig.add_annotation(
-            text=kwargs['subtitle'],
-            xref="paper", yref="paper",
-            x=0.5, y=1.05, # Position above the main title
-            showarrow=False,
-            font=dict(size=12, color="grey"),
-            xanchor="center", yanchor="bottom"
-        )
-
-    # Add caption if provided (as annotation)
-    if 'caption' in kwargs:
-        fig.add_annotation(
-            text=kwargs['caption'],
-            xref="paper", yref="paper",
-            x=0.5, y=-0.15, # Position below the plot
-            showarrow=False,
-            font=dict(size=10, color="grey"),
-            xanchor="center", yanchor="top"
-        )
-
-    # Save plot if requested
-    if isave:
-        output_dir = "LCZ4r_output"
-        os.makedirs(output_dir, exist_ok=True)
-
-        valid_extensions = ["html", "json"] # Plotly supports html and json natively
-        extension = save_extension.lower() if save_extension.lower() in valid_extensions else "html"
-
-        output_path = os.path.join(output_dir, f"lcz4r_area_{plot_type}.{extension}")
-
-        if extension == "html":
-            fig.write_html(output_path)
-        elif extension == "json":
-            fig.write_json(output_path)
-
-        print(f"Plot salvo: {os.path.abspath(output_path)}")
-
-        # Optionally save the stats DataFrame as well
-        csv_path = os.path.join(output_dir, "lcz4r_area_stats.csv")
-        area_stats.to_csv(csv_path, index=False)
-        print(f"Stats data saved: {os.path.abspath(csv_path)}")
-
-
-    return fig
-
-def lcz_area_analysis_report(gdf, city_name=None):
-    """
-    Gera um relatório completo de análise de área LCZ.
-    
-    Parameters
-    ----------
-    gdf : geopandas.GeoDataFrame
-        GeoDataFrame com dados LCZ
-    city_name : str, optional
-        Nome da cidade para incluir no relatório
-    
-    Returns
-    -------
-    str
-        Relatório formatado em texto
-    """
-    
-    try:
-        # Calcular estatísticas
-        result = lcz_cal_area(gdf)
-        stats = result['stats']
-        summary = result['summary']
-        
-        # Cabeçalho do relatório
-        city_text = f" - {city_name}" if city_name else ""
-        report = f"""
-=== RELATÓRIO DE ANÁLISE LCZ{city_text} ===
-
-RESUMO GERAL:
-• Área total analisada: {summary['total_area_km2']:.2f} km²
-• Número de classes LCZ: {summary['num_classes']}
-• Total de polígonos: {summary['num_total_poligonos']}
-• Classe dominante: {summary['classe_dominante']} ({summary['percentual_classe_dominante']:.1f}%)
-
-DISTRIBUIÇÃO POR CLASSE LCZ:
-"""
-        
-        # Adicionar detalhes por classe
-        for _, row in stats.iterrows():
-            report += f"""
-{row['zcl_classe']}:
-  • Área total: {row['area_total_km2']:.2f} km² ({row['percentual']:.1f}%)
-  • Polígonos: {row['num_poligonos']}
-  • Área média por polígono: {row['area_media_km2']:.3f} km²
-"""
-        
-        # Análise adicional
-        report += f"""
-ANÁLISE ADICIONAL:
-• Classes urbanas (LCZ 1-10): {stats[stats['zcl_classe'].str.contains('LCZ [1-9]|LCZ 10')]['area_total_km2'].sum():.2f} km²
-• Classes naturais (LCZ A-G): {stats[stats['zcl_classe'].str.contains('LCZ [A-G]')]['area_total_km2'].sum():.2f} km²
-• Fragmentação média: {stats['num_poligonos'].sum() / summary['total_area_km2']:.2f} polígonos/km²
-
-=== FIM DO RELATÓRIO ===
-"""
-        
-        return report
-        
-    except Exception as e:
-        return f"Erro ao gerar relatório: {str(e)}"
-
-
-def validate_lcz_data(gdf):
-    """
-    Valida a integridade dos dados LCZ.
-    
-    Parameters
-    ----------
-    gdf : geopandas.GeoDataFrame
-        GeoDataFrame com dados LCZ para validação
-    
-    Returns
-    -------
-    dict
-        Resultado da validação com status e mensagens
-    """
-    
-    validation_result = {
-        'valid': True,
-        'warnings': [],
-        'errors': [],
-        'info': []
-    }
-    
-    try:
-        # Verificar se o GeoDataFrame não está vazio
-        if gdf is None or len(gdf) == 0:
-            validation_result['valid'] = False
-            validation_result['errors'].append("GeoDataFrame vazio ou None")
-            return validation_result
-        
-        # Verificar colunas obrigatórias
-        required_columns = ['zcl_classe', 'geometry']
-        missing_columns = [col for col in required_columns if col not in gdf.columns]
-        if missing_columns:
-            validation_result['valid'] = False
-            validation_result['errors'].append(f"Colunas obrigatórias ausentes: {missing_columns}")
-        
-        # Verificar geometrias válidas
-        invalid_geoms = gdf[~gdf.geometry.is_valid]
-        if len(invalid_geoms) > 0:
-            validation_result['warnings'].append(f"{len(invalid_geoms)} geometrias inválidas encontradas")
-        
-        # Verificar classes LCZ válidas
-        valid_classes = [f"LCZ {i}" for i in range(1, 11)] + [f"LCZ {c}" for c in 'ABCDEFG']
-        invalid_classes = gdf[~gdf['zcl_classe'].isin(valid_classes)]['zcl_classe'].unique()
-        if len(invalid_classes) > 0:
-            validation_result['warnings'].append(f"Classes LCZ não reconhecidas: {list(invalid_classes)}")
-        
-        # Verificar CRS
-        if gdf.crs is None:
-            validation_result['warnings'].append("Sistema de coordenadas (CRS) não definido")
-        
-        # Informações gerais
-        validation_result['info'].append(f"Total de registros: {len(gdf)}")
-        validation_result['info'].append(f"Classes LCZ presentes: {len(gdf['zcl_classe'].unique())}")
-        
-        if 'area_km2' in gdf.columns:
-            total_area = gdf['area_km2'].sum()
-            validation_result['info'].append(f"Área total: {total_area:.2f} km²")
-        
-    except Exception as e:
-        validation_result['valid'] = False
-        validation_result['errors'].append(f"Erro durante validação: {str(e)}")
-    
-    return validation_result

@@ -467,40 +467,47 @@ def enhance_lcz_data(gdf):
     return gdf
 
 
-def lcz_cal_area(gdf, return_stats=True, return_plot_data=True):
+def lcz_cal_area(gdf, plot_type="bar", isave=False,
+                 save_extension="html", inclusive=False, **kwargs):
     """
-    Calcula estatísticas de área para classes LCZ e prepara dados para visualização.
-    
-    Esta função é agnóstica em relação à biblioteca de plotagem e apenas processa 
-    os dados brutos da GeoDataFrame para um formato tabular e de dicionário.
-    
+    Calcula estatísticas de área para classes LCZ e gera um objeto Plotly para visualização.
+
     Parameters
     ----------
     gdf : geopandas.GeoDataFrame
         GeoDataFrame com dados LCZ contendo colunas 'zcl_classe' e geometria.
-    return_stats : bool, default True
-        Se True, retorna estatísticas detalhadas de área em formato DataFrame.
-    return_plot_data : bool, default True
-        Se True, retorna dados formatados em dicionário para plotagem (ex: cores LCZ e listas de valores).
-    
+    plot_type : str, default "bar"
+        Tipo de plot a gerar: "bar", "pie", ou "donut"
+    isave : bool, default False
+        Se True, salva o plot como arquivo (HTML para Plotly).
+    save_extension : str, default "html"
+        Formato do arquivo de saída para salvar o plot ("html", "json").
+    inclusive : bool, default False
+        Se True, usa uma paleta colorblind-friendly para o plot.
+    **kwargs : dict
+        Parâmetros adicionais para títulos (title, subtitle, caption, etc.)
+
     Returns
     -------
-    dict
-        Dicionário contendo:
-        - 'stats': DataFrame com estatísticas de área por classe LCZ.
-        - 'plot_data': Dados formatados (listas, cores) para visualização.
-        - 'summary': Resumo geral das áreas.
+    plotly.graph_objects.Figure
+        Um objeto Figura Plotly com o plot gerado.
+
+    Raises
+    ------
+    ValueError
+        Se gdf for vazio ou None, colunas obrigatórias estiverem ausentes,
+        ou plot_type for inválido.
     """
-    
+
     if gdf is None or len(gdf) == 0:
         raise ValueError("GeoDataFrame vazio ou None fornecido.")
-    
+
     # 1. Verificação de Colunas
     required_cols = ['zcl_classe']
     missing_cols = [col for col in required_cols if col not in gdf.columns]
     if missing_cols:
         raise ValueError(f"Colunas obrigatórias ausentes: {missing_cols}")
-    
+
     # 2. Cálculo da Área (se necessário)
     gdf_work = gdf.copy()
     if 'area_km2' not in gdf_work.columns:
@@ -508,64 +515,164 @@ def lcz_cal_area(gdf, return_stats=True, return_plot_data=True):
         # O uso do CRS projetado garante precisão.
         if gdf_work.crs and gdf_work.crs.is_geographic:
             # Usar projeção equivalente de área global (ESRI:54009 - World Mollweide)
-            gdf_work = gdf_work.to_crs('ESRI:54009') 
-        
+            try:
+                gdf_work = gdf_work.to_crs('ESRI:54009')
+            except Exception as e:
+                 warnings.warn(f"Não foi possível reprojetar para ESRI:54009. Tentando EPSG:3857. Erro: {e}")
+                 try:
+                     gdf_work = gdf_work.to_crs('EPSG:3857') # Web Mercator as a common fallback
+                 except Exception as e2:
+                      raise RuntimeError(f"Falha ao reprojetar GeoDataFrame para cálculo de área: {e2}")
+
+
         # Área em metros quadrados / 1 milhão = km²
+        # Use geometry.area in the projected CRS
         gdf_work['area_km2'] = gdf_work.geometry.area / 1e6
-    
+
+
     # 3. Estatísticas por Classe LCZ
     area_stats = gdf_work.groupby('zcl_classe').agg({
         'area_km2': ['sum', 'count', 'mean', 'std', 'min', 'max']
     }).round(3)
-    
+
     # Achatar colunas multi-nível
-    area_stats.columns = ['area_total_km2', 'num_poligonos', 'area_media_km2', 
+    area_stats.columns = ['area_total_km2', 'num_poligonos', 'area_media_km2',
                          'area_std_km2', 'area_min_km2', 'area_max_km2']
     area_stats = area_stats.reset_index()
-    
+
     # 4. Cálculo de Percentuais
     total_area = area_stats['area_total_km2'].sum()
     area_stats['percentual'] = (area_stats['area_total_km2'] / total_area * 100).round(2)
-    
+
     # Ordenar por área total (decrescente)
     area_stats = area_stats.sort_values('area_total_km2', ascending=False)
-    
+
     # 5. Preparar Dados para Plotagem (Plotly friendly)
-    plot_data = {
-        'classes': area_stats['zcl_classe'].tolist(),
-        'areas': area_stats['area_total_km2'].tolist(),
-        'percentuais': area_stats['percentual'].tolist(),
-        'num_poligonos': area_stats['num_poligonos'].tolist(),
-        # Manter o dicionário de cores fixo, essencial para a identidade visual
-        'cores_lcz': {
-            'LCZ 1': '#910613', 'LCZ 2': '#D9081C', 'LCZ 3': '#FF0A22', 
-            'LCZ 4': '#C54F1E', 'LCZ 5': '#FF6628', 'LCZ 6': '#FF985E',
-            'LCZ 7': '#FDED3F', 'LCZ 8': '#BBBBBB', 'LCZ 9': '#FFCBAB',
-            'LCZ 10': '#565656', 'LCZ A': '#006A18', 'LCZ B': '#00A926',
-            'LCZ C': '#628432', 'LCZ D': '#B5DA7F', 'LCZ E': '#000000',
-            'LCZ F': '#FCF7B1', 'LCZ G': '#656BFA'
-        }
+    # Manter o dicionário de cores fixo, essencial para a identidade visual
+    lcz_colors_dict = {
+        'LCZ 1': '#910613', 'LCZ 2': '#D9081C', 'LCZ 3': '#FF0A22',
+        'LCZ 4': '#C54F1E', 'LCZ 5': '#FF6628', 'LCZ 6': '#FF985E',
+        'LCZ 7': '#FDED3F', 'LCZ 8': '#BBBBBB', 'LCZ 9': '#FFCBAB',
+        'LCZ 10': '#565656', 'LCZ A': '#006A18', 'LCZ B': '#00A926',
+        'LCZ C': '#628432', 'LCZ D': '#B5DA7F', 'LCZ E': '#000000',
+        'LCZ F': '#FCF7B1', 'LCZ G': '#656BFA'
     }
-    
-    # 6. Resumo Geral
-    summary = {
-        'total_area_km2': total_area,
-        'num_classes': len(area_stats),
-        'num_total_poligonos': area_stats['num_poligonos'].sum(),
-        'classe_dominante': area_stats.iloc[0]['zcl_classe'],
-        'area_classe_dominante_km2': area_stats.iloc[0]['area_total_km2'],
-        'percentual_classe_dominante': area_stats.iloc[0]['percentual']
-    }
-    
-    # 7. Preparar Resultado
-    result = {}
-    if return_stats:
-        result['stats'] = area_stats
-    if return_plot_data:
-        result['plot_data'] = plot_data
-    result['summary'] = summary
-    
-    return result
+
+    # Create a list of colors matching the sorted area_stats DataFrame
+    area_stats['color'] = area_stats['zcl_classe'].map(lcz_colors_dict)
+    # For inclusive palette, you might define a separate dictionary or logic here
+
+    # 6. Gerar Plotly Figure
+    fig = go.Figure()
+
+    if plot_type == "bar":
+        fig = go.Figure(go.Bar(
+            x=area_stats['zcl_classe'],
+            y=area_stats['area_total_km2'],
+            marker={'color': area_stats['color']},
+            text=area_stats['percentual'].astype(str) + '%',
+            textposition='outside',
+            hoverinfo='text',
+            hovertext=
+            '<b>LCZ Class</b>: ' + area_stats['zcl_classe'] + '<br>' +
+            '<b>Area (km²)</b>: ' + area_stats['area_total_km2'].astype(str) + '<br>' +
+            '<b>Percentage (%)</b>: ' + area_stats['percentual'].astype(str)
+        ))
+
+        fig.update_layout(
+            xaxis_title=kwargs.get('xlab', 'LCZ Class'),
+            yaxis_title=kwargs.get('ylab', 'Area [km2]'),
+            bargap=0.2
+        )
+
+    elif plot_type in ["pie", "donut"]:
+        # Filter out classes with 0 area for pie/donut
+        plot_df = area_stats[area_stats['area_total_km2'] > 0].copy()
+
+        if plot_type == "pie":
+             fig = go.Figure(go.Pie(
+                labels=plot_df['zcl_classe'],
+                values=plot_df['area_total_km2'],
+                marker={'colors': plot_df['color']},
+                hoverinfo='label+percent+value',
+                textinfo='percent+label',
+                insidetextorientation='radial'
+            ))
+
+        elif plot_type == "donut":
+            fig = go.Figure(go.Pie(
+                labels=plot_df['zcl_classe'],
+                values=plot_df['area_total_km2'],
+                marker={'colors': plot_df['color']},
+                hole=.3, # Create donut hole
+                hoverinfo='label+percent+value',
+                textinfo='percent+label',
+                insidetextorientation='radial'
+            ))
+            # Add total area text in the center for donut
+            fig.add_annotation(
+                text=f"Total:<br>{total_area:.0f} km²",
+                x=0.5, y=0.5, font_size=12, showarrow=False,
+                xanchor='center', yanchor='middle'
+            )
+
+
+    else:
+        raise ValueError("plot_type must be 'bar', 'pie', or 'donut'")
+
+    # Update layout for all plot types
+    fig.update_layout(
+        title_text=kwargs.get('title', 'LCZ Area Distribution'),
+        title_x=0.5,
+        legend_title='LCZ Class'
+    )
+
+    # Add subtitle if provided (as annotation)
+    if 'subtitle' in kwargs:
+         fig.add_annotation(
+            text=kwargs['subtitle'],
+            xref="paper", yref="paper",
+            x=0.5, y=1.05, # Position above the main title
+            showarrow=False,
+            font=dict(size=12, color="grey"),
+            xanchor="center", yanchor="bottom"
+        )
+
+    # Add caption if provided (as annotation)
+    if 'caption' in kwargs:
+        fig.add_annotation(
+            text=kwargs['caption'],
+            xref="paper", yref="paper",
+            x=0.5, y=-0.15, # Position below the plot
+            showarrow=False,
+            font=dict(size=10, color="grey"),
+            xanchor="center", yanchor="top"
+        )
+
+    # Save plot if requested
+    if isave:
+        output_dir = "LCZ4r_output"
+        os.makedirs(output_dir, exist_ok=True)
+
+        valid_extensions = ["html", "json"] # Plotly supports html and json natively
+        extension = save_extension.lower() if save_extension.lower() in valid_extensions else "html"
+
+        output_path = os.path.join(output_dir, f"lcz4r_area_{plot_type}.{extension}")
+
+        if extension == "html":
+            fig.write_html(output_path)
+        elif extension == "json":
+            fig.write_json(output_path)
+
+        print(f"Plot salvo: {os.path.abspath(output_path)}")
+
+        # Optionally save the stats DataFrame as well
+        csv_path = os.path.join(output_dir, "lcz4r_area_stats.csv")
+        area_stats.to_csv(csv_path, index=False)
+        print(f"Stats data saved: {os.path.abspath(csv_path)}")
+
+
+    return fig
 
 def lcz_area_analysis_report(gdf, city_name=None):
     """

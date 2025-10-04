@@ -586,51 +586,49 @@ def lcz_cal_area(gdf, return_stats=True, return_plot_data=True):
     """
     Calcula estatísticas de área para classes LCZ e prepara dados para visualização.
     
+    Esta função é agnóstica em relação à biblioteca de plotagem e apenas processa 
+    os dados brutos da GeoDataFrame para um formato tabular e de dicionário.
+    
     Parameters
     ----------
     gdf : geopandas.GeoDataFrame
-        GeoDataFrame com dados LCZ contendo colunas 'zcl_classe' e geometria
+        GeoDataFrame com dados LCZ contendo colunas 'zcl_classe' e geometria.
     return_stats : bool, default True
-        Se True, retorna estatísticas detalhadas de área
+        Se True, retorna estatísticas detalhadas de área em formato DataFrame.
     return_plot_data : bool, default True
-        Se True, retorna dados formatados para plotagem
+        Se True, retorna dados formatados em dicionário para plotagem (ex: cores LCZ e listas de valores).
     
     Returns
     -------
     dict
         Dicionário contendo:
-        - 'stats': DataFrame com estatísticas de área por classe LCZ
-        - 'plot_data': Dados formatados para visualização
-        - 'summary': Resumo geral das áreas
-        
-    Examples
-    --------
-    >>> result = lcz_cal_area(lcz_gdf)
-    >>> print(result['summary'])
-    >>> area_stats = result['stats']
-    >>> plot_data = result['plot_data']
+        - 'stats': DataFrame com estatísticas de área por classe LCZ.
+        - 'plot_data': Dados formatados (listas, cores) para visualização.
+        - 'summary': Resumo geral das áreas.
     """
     
     if gdf is None or len(gdf) == 0:
-        raise ValueError("GeoDataFrame vazio ou None fornecido")
+        raise ValueError("GeoDataFrame vazio ou None fornecido.")
     
-    # Verificar se as colunas necessárias existem
+    # 1. Verificação de Colunas
     required_cols = ['zcl_classe']
     missing_cols = [col for col in required_cols if col not in gdf.columns]
     if missing_cols:
         raise ValueError(f"Colunas obrigatórias ausentes: {missing_cols}")
     
-    # Calcular área se não existir
+    # 2. Cálculo da Área (se necessário)
     gdf_work = gdf.copy()
     if 'area_km2' not in gdf_work.columns:
-        # Reprojetar para um CRS apropriado para cálculo de área se necessário
+        # Reprojetar para um CRS apropriado para cálculo de área (Mollweide ou similar)
+        # O uso do CRS projetado garante precisão.
         if gdf_work.crs and gdf_work.crs.is_geographic:
-            # Usar projeção equivalente de área (Mollweide)
-            gdf_work = gdf_work.to_crs('ESRI:54009')
+            # Usar projeção equivalente de área global (ESRI:54009 - World Mollweide)
+            gdf_work = gdf_work.to_crs('ESRI:54009') 
         
+        # Área em metros quadrados / 1 milhão = km²
         gdf_work['area_km2'] = gdf_work.geometry.area / 1e6
     
-    # Calcular estatísticas por classe LCZ
+    # 3. Estatísticas por Classe LCZ
     area_stats = gdf_work.groupby('zcl_classe').agg({
         'area_km2': ['sum', 'count', 'mean', 'std', 'min', 'max']
     }).round(3)
@@ -640,19 +638,20 @@ def lcz_cal_area(gdf, return_stats=True, return_plot_data=True):
                          'area_std_km2', 'area_min_km2', 'area_max_km2']
     area_stats = area_stats.reset_index()
     
-    # Calcular percentuais
+    # 4. Cálculo de Percentuais
     total_area = area_stats['area_total_km2'].sum()
     area_stats['percentual'] = (area_stats['area_total_km2'] / total_area * 100).round(2)
     
     # Ordenar por área total (decrescente)
     area_stats = area_stats.sort_values('area_total_km2', ascending=False)
     
-    # Preparar dados para plotagem
+    # 5. Preparar Dados para Plotagem (Plotly friendly)
     plot_data = {
         'classes': area_stats['zcl_classe'].tolist(),
         'areas': area_stats['area_total_km2'].tolist(),
         'percentuais': area_stats['percentual'].tolist(),
         'num_poligonos': area_stats['num_poligonos'].tolist(),
+        # Manter o dicionário de cores fixo, essencial para a identidade visual
         'cores_lcz': {
             'LCZ 1': '#910613', 'LCZ 2': '#D9081C', 'LCZ 3': '#FF0A22', 
             'LCZ 4': '#C54F1E', 'LCZ 5': '#FF6628', 'LCZ 6': '#FF985E',
@@ -663,7 +662,7 @@ def lcz_cal_area(gdf, return_stats=True, return_plot_data=True):
         }
     }
     
-    # Resumo geral
+    # 6. Resumo Geral
     summary = {
         'total_area_km2': total_area,
         'num_classes': len(area_stats),
@@ -673,19 +672,15 @@ def lcz_cal_area(gdf, return_stats=True, return_plot_data=True):
         'percentual_classe_dominante': area_stats.iloc[0]['percentual']
     }
     
-    # Preparar resultado
+    # 7. Preparar Resultado
     result = {}
-    
     if return_stats:
         result['stats'] = area_stats
-    
     if return_plot_data:
         result['plot_data'] = plot_data
-    
     result['summary'] = summary
     
     return result
-
 
 def lcz_area_analysis_report(gdf, city_name=None):
     """

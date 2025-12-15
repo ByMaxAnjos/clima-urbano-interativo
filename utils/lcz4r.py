@@ -454,7 +454,7 @@ def lcz_plot_map(x, isave=False, show_legend=True, save_extension="png",
 
     return fig
 
-def aggregate_raster(data, transform, factor=10):
+def aggregate_raster(data, transform, factor=5):
     """
     Agrega raster usando moda (valor mais frequente)
     
@@ -520,7 +520,7 @@ def raster_to_polygons(data, transform, crs):
         crs=crs
     )
 
-def process_lcz_map(raster_data, raster_profile, factor=10):
+def process_lcz_map(raster_data, raster_profile, factor=5):
     """
     Processamento completo do mapa LCZ para formato vetorial
     

@@ -1,47 +1,85 @@
-/* Estilo moderno para a Plataforma Clima Urbano */
+/*
+ * ============================================================
+ *  Forest Canopy Theme — Streamlit
+ *  Urban Climate Educational Platform (LCZ4r / CLIMASUS4r)
+ *
+ *  Design system: Nature-Inspired Climate Analysis
+ *  Palette: off-white sage · forest green · sky blue · terracotta
+ *  Consistent with custom-modern.css (pkgdown / R Markdown)
+ * ============================================================
+ */
 
-/* Importar fontes do Google */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@300;400;500;600;700&display=swap');
+/* ============================================================
+   FONTS
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Source+Serif+4:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-/* Variáveis CSS para tema consistente */
+/* ============================================================
+   DESIGN TOKENS — Forest Canopy
+   ============================================================ */
 :root {
-  --primary-color: #667eea;
-  --primary-dark: #5a67d8;
-  --secondary-color: #764ba2;
-  --accent-color: #f093fb;
-  --success-color: #48bb78;
-  --warning-color: #ed8936;
-  --error-color: #f56565;
-  --info-color: #4299e1;
-  --background-color: #f7fafc;
-  --background-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --surface-color: #ffffff;
-  --surface-hover: #f8f9fa;
-  --text-primary: #2d3748;
-  --text-secondary: #718096;
-  --text-muted: #a0aec0;
-  --border-color: #e2e8f0;
-  --border-hover: #cbd5e0;
-  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  /* Backgrounds */
+  --background-color:    #f8faf7;   /* off-white with green tint */
+  --surface-color:       #ffffff;   /* card / panel surface */
+  --surface-hover:       #f0f4ef;   /* very light sage on hover */
+  --surface-elevated:    #e6ede4;   /* pale sage — elevated elements */
+
+  /* Brand colours */
+  --primary-color:       #10b981;   /* emerald — primary accent */
+  --primary-dark:        #059669;   /* deep forest green */
+  --primary-light:       #d1fae5;   /* mint tint */
+  --secondary-color:     #0ea5e9;   /* sky blue */
+  --secondary-dark:      #0369a1;   /* deep sky blue */
+  --secondary-light:     #e0f2fe;   /* sky tint */
+  --accent-color:        #c2410c;   /* terracotta — heat / urgency */
+
+  /* Semantic colours */
+  --success-color:       #059669;
+  --warning-color:       #d97706;
+  --error-color:         #dc2626;
+  --info-color:          #0369a1;
+
+  /* Text */
+  --text-primary:        #1a2e1a;   /* deep forest */
+  --text-secondary:      #4a6741;   /* medium forest green */
+  --text-muted:          #8aaa82;   /* soft sage */
+
+  /* Borders */
+  --border-color:        rgba(45, 106, 79, 0.14);
+  --border-hover:        rgba(45, 106, 79, 0.28);
+
+  /* Gradients */
+  --background-gradient: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%);
+  --header-gradient:     linear-gradient(135deg, #1a2e1a 0%, #2d6a4f 50%, #0369a1 100%);
+  --subtle-gradient:     linear-gradient(135deg, #f0f4ef 0%, #f8faf7 100%);
+
+  /* Shadows — green-tinted */
+  --shadow-sm:  0 1px 3px rgba(26, 46, 26, 0.07), 0 1px 2px rgba(26, 46, 26, 0.04);
+  --shadow-md:  0 4px 12px rgba(26, 46, 26, 0.08), 0 2px 4px rgba(26, 46, 26, 0.04);
+  --shadow-lg:  0 12px 32px rgba(26, 46, 26, 0.10), 0 4px 8px rgba(26, 46, 26, 0.05);
+  --shadow-xl:  0 20px 48px rgba(26, 46, 26, 0.12), 0 8px 16px rgba(26, 46, 26, 0.06);
+
+  /* Border radius */
   --border-radius-sm: 6px;
-  --border-radius: 12px;
+  --border-radius:    12px;
   --border-radius-lg: 16px;
   --border-radius-xl: 24px;
-  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Transitions */
+  --transition:      all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Reset e configurações globais */
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
 * {
   box-sizing: border-box;
 }
 
 html {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  line-height: 1.6;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.7;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -53,7 +91,9 @@ body {
   padding: 0;
 }
 
-/* Estilo do corpo principal */
+/* ============================================================
+   STREAMLIT MAIN CONTAINER
+   ============================================================ */
 .main .block-container {
   padding-top: 2rem;
   padding-bottom: 2rem;
@@ -61,9 +101,12 @@ body {
   margin: 0 auto;
 }
 
-/* Sidebar customizada */
+/* ============================================================
+   SIDEBAR
+   ============================================================ */
+/* Legacy Streamlit class */
 .css-1d391kg {
-  background: var(--surface-color);
+  background: linear-gradient(180deg, var(--surface-color) 0%, var(--surface-hover) 100%);
   border-right: 1px solid var(--border-color);
   box-shadow: var(--shadow-md);
 }
@@ -72,9 +115,21 @@ body {
   padding: 1.5rem 1rem;
 }
 
-/* Headers personalizados com gradientes modernos */
+/* Modern Streamlit sidebar selector */
+section[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, var(--surface-color) 0%, var(--surface-hover) 100%);
+  border-right: 1px solid var(--border-color);
+}
+
+section[data-testid="stSidebar"] .block-container {
+  padding: 1.5rem 1rem;
+}
+
+/* ============================================================
+   MAIN HEADER — Hero banner
+   ============================================================ */
 .main-header {
-  background: var(--background-gradient);
+  background: var(--header-gradient);
   color: white;
   padding: 3rem 2rem;
   border-radius: var(--border-radius-lg);
@@ -88,33 +143,40 @@ body {
 .main-header::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 50%);
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(ellipse at top right, rgba(14,165,233,0.25) 0%, transparent 60%);
   pointer-events: none;
 }
 
+.main-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--background-gradient);
+}
+
 .main-header h1 {
-  margin: 0;
-  font-size: 3rem;
+  margin: 0 0 0.5rem 0;
+  font-size: clamp(2rem, 5vw, 3rem);
   font-weight: 800;
-  margin-bottom: 0.5rem;
-  font-family: 'Poppins', sans-serif;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  font-family: 'Source Serif 4', Georgia, serif;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  letter-spacing: -0.02em;
 }
 
 .main-header .subtitle {
-  font-size: 1.3rem;
-  opacity: 0.95;
+  font-size: 1.2rem;
+  opacity: 0.92;
   margin: 0;
   font-weight: 400;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 
+/* ============================================================
+   MODULE HEADER
+   ============================================================ */
 .module-header {
-  background: var(--background-gradient);
+  background: var(--header-gradient);
   color: white;
   padding: 2rem;
   border-radius: var(--border-radius-lg);
@@ -128,31 +190,29 @@ body {
 .module-header::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 50%);
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(ellipse at top left, rgba(16,185,129,0.20) 0%, transparent 60%);
   pointer-events: none;
 }
 
 .module-header h1 {
-  margin: 0;
-  font-size: 2.5rem;
+  margin: 0 0 0.5rem 0;
+  font-size: clamp(1.5rem, 3vw, 2.5rem);
   font-weight: 700;
-  margin-bottom: 0.5rem;
-  font-family: 'Poppins', sans-serif;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  font-family: 'Source Serif 4', Georgia, serif;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.15);
 }
 
 .module-header p {
   margin: 0;
-  opacity: 0.95;
-  font-size: 1.2rem;
+  opacity: 0.92;
+  font-size: 1.1rem;
   font-weight: 400;
 }
 
-/* Cards dos módulos com design moderno */
+/* ============================================================
+   MODULE CARDS
+   ============================================================ */
 .module-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -172,20 +232,21 @@ body {
   overflow: hidden;
 }
 
+/* Left accent stripe */
 .module-card::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
+  top: 0; left: 0;
   width: 4px;
   height: 100%;
   background: var(--background-gradient);
   transform: scaleY(0);
+  transform-origin: bottom;
   transition: var(--transition);
 }
 
 .module-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-5px);
   box-shadow: var(--shadow-xl);
   border-color: var(--primary-color);
 }
@@ -195,49 +256,51 @@ body {
 }
 
 .module-card h4 {
-  color: var(--primary-color);
-  margin: 0 0 1rem 0;
-  font-size: 1.4rem;
-  font-weight: 600;
-  font-family: 'Poppins', sans-serif;
+  color: var(--primary-dark);
+  margin: 0 0 0.75rem 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-family: 'Source Serif 4', Georgia, serif;
 }
 
 .module-card p {
   color: var(--text-secondary);
   margin: 0;
-  font-size: 1rem;
-  line-height: 1.6;
+  font-size: 0.95rem;
+  line-height: 1.65;
 }
 
-/* Botões modernos com gradientes */
+/* ============================================================
+   STREAMLIT BUTTONS
+   ============================================================ */
 .stButton > button {
   background: var(--background-gradient);
   color: white;
   border: none;
   border-radius: var(--border-radius);
-  padding: 0.875rem 2rem;
+  padding: 0.75rem 1.75rem;
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 0.95rem;
   transition: var(--transition);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-sm);
   position: relative;
   overflow: hidden;
 }
 
+/* Shimmer effect on hover */
 .stButton > button::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: -100%;
+  top: 0; left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
   transition: var(--transition);
 }
 
 .stButton > button:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-md);
 }
 
 .stButton > button:hover::before {
@@ -246,9 +309,25 @@ body {
 
 .stButton > button:active {
   transform: translateY(0);
+  box-shadow: var(--shadow-sm);
 }
 
-/* Métricas com design aprimorado */
+/* Secondary / outline button */
+.stButton > button[kind="secondary"] {
+  background: transparent;
+  color: var(--primary-dark);
+  border: 1.5px solid var(--primary-color);
+  box-shadow: none;
+}
+
+.stButton > button[kind="secondary"]:hover {
+  background: var(--primary-light);
+  border-color: var(--primary-dark);
+}
+
+/* ============================================================
+   METRICS
+   ============================================================ */
 .metric-container {
   background: var(--surface-color);
   border: 1px solid var(--border-color);
@@ -264,7 +343,48 @@ body {
   transform: translateY(-2px);
 }
 
-/* Alertas modernos */
+.metric-container .metric-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--primary-dark);
+  font-family: 'Source Serif 4', Georgia, serif;
+}
+
+.metric-container .metric-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Streamlit native metric */
+[data-testid="metric-container"] {
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 1rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+}
+
+[data-testid="metric-container"]:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+[data-testid="metric-container"] [data-testid="stMetricValue"] {
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+[data-testid="metric-container"] [data-testid="stMetricDelta"] svg {
+  fill: var(--primary-color);
+}
+
+/* ============================================================
+   ALERTS
+   ============================================================ */
 .stAlert {
   border-radius: var(--border-radius);
   border: none;
@@ -272,177 +392,63 @@ body {
   font-weight: 500;
 }
 
-.stSuccess {
-  background: linear-gradient(135deg, #48bb78, #38a169);
-  color: white;
-  border-left: 4px solid #2f855a;
-}
-
-.stError {
-  background: linear-gradient(135deg, #f56565, #e53e3e);
-  color: white;
-  border-left: 4px solid #c53030;
-}
-
-.stWarning {
-  background: linear-gradient(135deg, #ed8936, #dd6b20);
-  color: white;
-  border-left: 4px solid #c05621;
-}
-
-.stInfo {
-  background: linear-gradient(135deg, #4299e1, #3182ce);
-  color: white;
-  border-left: 4px solid #2c5282;
-}
-
-/* Expanders */
-.streamlit-expanderHeader {
-  background-color: var(--surface-color);
-  border: 1px solid var(--border-color);
+/* Success */
+.stSuccess,
+div[data-baseweb="notification"][kind="positive"] {
+  background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+  color: #064e3b;
+  border-left: 4px solid var(--success-color);
   border-radius: var(--border-radius);
-  font-weight: 500;
 }
 
-/* Tabelas */
-.stDataFrame {
+/* Error */
+.stError,
+div[data-baseweb="notification"][kind="negative"] {
+  background: linear-gradient(135deg, #fee2e2, #fecaca);
+  color: #7f1d1d;
+  border-left: 4px solid var(--error-color);
   border-radius: var(--border-radius);
-  overflow: hidden;
-  box-shadow: var(--shadow-light);
 }
 
-/* Upload de arquivos */
-.stFileUploader {
-  border: 2px dashed var(--border-color);
+/* Warning */
+.stWarning,
+div[data-baseweb="notification"][kind="warning"] {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  color: #78350f;
+  border-left: 4px solid var(--warning-color);
   border-radius: var(--border-radius);
-  padding: 2rem;
-  text-align: center;
-  transition: var(--transition);
 }
 
-.stFileUploader:hover {
-  border-color: var(--primary-color);
-  background-color: #f8f9fa;
-}
-
-/* Selectbox e inputs */
-.stSelectbox > div > div {
+/* Info */
+.stInfo,
+div[data-baseweb="notification"][kind="info"] {
+  background: linear-gradient(135deg, #e0f2fe, #bae6fd);
+  color: #0c4a6e;
+  border-left: 4px solid var(--info-color);
   border-radius: var(--border-radius);
-  border-color: var(--border-color);
 }
 
-.stTextInput > div > div {
-  border-radius: var(--border-radius);
-  border-color: var(--border-color);
-}
-
-/* Checkbox */
-.stCheckbox {
-  margin: 0.5rem 0;
-}
-
-/* Tabs */
-.stTabs [data-baseweb="tab-list"] {
-  gap: 8px;
-}
-
-.stTabs [data-baseweb="tab"] {
-  background-color: var(--surface-color);
-  border-radius: var(--border-radius);
-  border: 1px solid var(--border-color);
-  padding: 0.5rem 1rem;
-  font-weight: 500;
-}
-
-.stTabs [aria-selected="true"] {
-  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-  color: white;
-  border-color: var(--primary-color);
-}
-
-/* Gráficos Plotly */
-.js-plotly-plot {
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow-light);
-  overflow: hidden;
-}
-
-/* Mapas */
-.folium-map {
-  border-radius: var(--border-radius);
-  overflow: hidden;
-  box-shadow: var(--shadow-medium);
-}
-
-/* Responsividade */
-@media (max-width: 768px) {
-  .main-header h1 {
-    font-size: 2rem;
-  }
-  
-  .main-header .subtitle {
-    font-size: 1rem;
-  }
-  
-  .module-cards {
-    grid-template-columns: 1fr;
-  }
-  
-  .module-header h1 {
-    font-size: 1.5rem;
-  }
-}
-
-/* Animações */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.fade-in {
-  animation: fadeIn 0.6s ease-out;
-}
-
-/* Scrollbar personalizada */
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--background-color);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
-}
-
-
-/* Expanders modernos */
+/* ============================================================
+   EXPANDERS
+   ============================================================ */
 .streamlit-expanderHeader {
   background: var(--surface-color);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   font-weight: 600;
+  color: var(--text-primary);
   transition: var(--transition);
 }
 
 .streamlit-expanderHeader:hover {
   background: var(--surface-hover);
   border-color: var(--border-hover);
+  color: var(--primary-dark);
 }
 
-/* Tabelas modernas */
+/* ============================================================
+   DATA TABLES
+   ============================================================ */
 .stDataFrame {
   border-radius: var(--border-radius);
   overflow: hidden;
@@ -451,16 +457,27 @@ body {
 }
 
 .stDataFrame table {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
+  font-family: 'Inter', sans-serif;
 }
 
 .stDataFrame th {
-  background: var(--background-gradient);
-  color: white;
-  font-weight: 600;
+  background: var(--surface-elevated);
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 2px solid var(--border-hover);
 }
 
-/* Upload de arquivos moderno */
+.stDataFrame tr:hover td {
+  background: var(--surface-hover);
+}
+
+/* ============================================================
+   FILE UPLOADER
+   ============================================================ */
 .stFileUploader {
   border: 2px dashed var(--border-color);
   border-radius: var(--border-radius-lg);
@@ -472,26 +489,40 @@ body {
 
 .stFileUploader:hover {
   border-color: var(--primary-color);
-  background: var(--surface-hover);
+  background: rgba(16, 185, 129, 0.04);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
 
-/* Inputs modernos */
+/* ============================================================
+   INPUTS — Selectbox, TextInput, NumberInput
+   ============================================================ */
 .stSelectbox > div > div,
-.stTextInput > div > div {
+.stTextInput > div > div,
+.stNumberInput > div > div {
   border-radius: var(--border-radius);
   border-color: var(--border-color);
+  background: var(--surface-color);
   transition: var(--transition-fast);
 }
 
 .stSelectbox > div > div:focus-within,
-.stTextInput > div > div:focus-within {
+.stTextInput > div > div:focus-within,
+.stNumberInput > div > div:focus-within {
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
 }
 
-/* Checkbox moderno */
+/* Slider */
+.stSlider [data-baseweb="slider"] [data-testid="stThumbValue"] {
+  background: var(--primary-color);
+  color: white;
+  border-radius: 100px;
+}
+
+/* ============================================================
+   CHECKBOX & RADIO
+   ============================================================ */
 .stCheckbox {
   margin: 0.75rem 0;
 }
@@ -501,9 +532,40 @@ body {
   color: var(--text-primary);
 }
 
-/* Tabs modernos */
+.stRadio > div {
+  gap: 0.5rem;
+}
+
+.stRadio > div > label {
+  background: var(--surface-color);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 0.75rem 1rem;
+  margin: 0.2rem 0;
+  transition: var(--transition);
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.stRadio > div > label:hover {
+  background: var(--surface-hover);
+  border-color: var(--primary-color);
+  color: var(--primary-dark);
+}
+
+.stRadio > div > label[data-checked="true"] {
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  border-color: var(--primary-color);
+  font-weight: 600;
+}
+
+/* ============================================================
+   TABS
+   ============================================================ */
 .stTabs [data-baseweb="tab-list"] {
-  gap: 12px;
+  gap: 8px;
   border-bottom: 2px solid var(--border-color);
 }
 
@@ -512,25 +574,29 @@ body {
   border-radius: var(--border-radius) var(--border-radius) 0 0;
   border: 1px solid var(--border-color);
   border-bottom: none;
-  padding: 1rem 1.5rem;
+  padding: 0.75rem 1.25rem;
   font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
   transition: var(--transition);
-  position: relative;
 }
 
 .stTabs [data-baseweb="tab"]:hover {
   background: var(--surface-hover);
+  color: var(--primary-dark);
 }
 
 .stTabs [aria-selected="true"] {
   background: var(--surface-color);
-  color: var(--primary-color);
+  color: var(--primary-dark);
   border-color: var(--primary-color);
   border-bottom: 2px solid var(--surface-color);
   margin-bottom: -2px;
 }
 
-/* Gráficos Plotly modernos */
+/* ============================================================
+   PLOTLY CHARTS
+   ============================================================ */
 .js-plotly-plot {
   border-radius: var(--border-radius-lg);
   box-shadow: var(--shadow-md);
@@ -538,7 +604,9 @@ body {
   border: 1px solid var(--border-color);
 }
 
-/* Mapas modernos */
+/* ============================================================
+   FOLIUM MAPS
+   ============================================================ */
 .folium-map {
   border-radius: var(--border-radius-lg);
   overflow: hidden;
@@ -546,141 +614,77 @@ body {
   border: 1px solid var(--border-color);
 }
 
-/* Radio buttons modernos */
-.stRadio > div {
+/* ============================================================
+   STATUS INDICATORS
+   ============================================================ */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
   gap: 0.5rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 100px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
 }
 
-.stRadio > div > label {
-  background: var(--surface-color);
-  border: 1px solid var(--border-color);
+.status-success {
+  background: var(--primary-light);
+  color: #064e3b;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.status-warning {
+  background: #fef3c7;
+  color: #78350f;
+  border: 1px solid rgba(217, 119, 6, 0.25);
+}
+
+.status-info {
+  background: var(--secondary-light);
+  color: #0c4a6e;
+  border: 1px solid rgba(14, 165, 233, 0.25);
+}
+
+.status-error {
+  background: #fee2e2;
+  color: #7f1d1d;
+  border: 1px solid rgba(220, 38, 38, 0.25);
+}
+
+/* ============================================================
+   GLASSMORPHISM — frosted light panels
+   ============================================================ */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(16, 185, 129, 0.18);
+  box-shadow: 0 8px 32px rgba(26, 46, 26, 0.10);
+  border-radius: var(--border-radius-lg);
+}
+
+/* ============================================================
+   LOADING SHIMMER
+   ============================================================ */
+.loading-shimmer {
+  background: linear-gradient(90deg, var(--surface-hover) 25%, var(--surface-elevated) 50%, var(--surface-hover) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite;
   border-radius: var(--border-radius);
-  padding: 0.75rem 1rem;
-  margin: 0.25rem 0;
-  transition: var(--transition);
-  cursor: pointer;
-  font-weight: 500;
 }
 
-.stRadio > div > label:hover {
-  background: var(--surface-hover);
-  border-color: var(--border-hover);
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
 }
 
-.stRadio > div > label[data-checked="true"] {
-  background: var(--background-gradient);
-  color: white;
-  border-color: var(--primary-color);
-}
-
-/* Sidebar melhorada */
-.css-1d391kg {
-  background: linear-gradient(180deg, var(--surface-color) 0%, #f8fafc 100%);
-}
-
-/* Métricas do Streamlit */
-.metric-container .metric-value {
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--primary-color);
-  font-family: 'Poppins', sans-serif;
-}
-
-.metric-container .metric-label {
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-/* Responsividade aprimorada */
-@media (max-width: 768px) {
-  .main-header h1 {
-    font-size: 2.5rem;
-  }
-  
-  .main-header .subtitle {
-    font-size: 1.1rem;
-  }
-  
-  .module-cards {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-  
-  .module-header h1 {
-    font-size: 2rem;
-  }
-  
-  .main .block-container {
-    padding-top: 1rem;
-    padding-bottom: 1rem;
-  }
-}
-
-@media (max-width: 480px) {
-  .main-header {
-    padding: 2rem 1rem;
-  }
-  
-  .module-header {
-    padding: 1.5rem 1rem;
-  }
-  
-  .module-card {
-    padding: 1.5rem;
-  }
-}
-
-/* Animações modernas */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes slideInLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
-}
-
-.fade-in-up {
-  animation: fadeInUp 0.6s ease-out;
-}
-
-.slide-in-left {
-  animation: slideInLeft 0.6s ease-out;
-}
-
-.pulse-hover:hover {
-  animation: pulse 0.6s ease-in-out;
-}
-
-/* Scrollbar personalizada moderna */
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
 }
 
 ::-webkit-scrollbar-track {
@@ -689,75 +693,98 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  background: linear-gradient(180deg, var(--primary-color), var(--secondary-color));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, var(--primary-dark), var(--secondary-color));
+  background: linear-gradient(180deg, var(--primary-dark), var(--secondary-dark));
 }
 
-/* Loading states */
-.loading-shimmer {
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 200% 100%;
-  animation: shimmer 2s infinite;
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.04); }
+}
+
+.fade-in        { animation: fadeIn      0.55s ease-out both; }
+.fade-in-up     { animation: fadeInUp    0.60s ease-out both; }
+.slide-in-left  { animation: slideInLeft 0.55s ease-out both; }
+.pulse-hover:hover { animation: pulse 0.55s ease-in-out; }
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 768px) {
+  .main-header {
+    padding: 2rem 1.25rem;
   }
-  100% {
-    background-position: 200% 0;
+  .main-header h1 {
+    font-size: 2rem;
   }
-}
-
-/* Status indicators */
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: var(--border-radius);
-  font-weight: 500;
-  font-size: 0.9rem;
-}
-
-.status-success {
-  background: rgba(72, 187, 120, 0.1);
-  color: var(--success-color);
-  border: 1px solid rgba(72, 187, 120, 0.2);
-}
-
-.status-warning {
-  background: rgba(237, 137, 54, 0.1);
-  color: var(--warning-color);
-  border: 1px solid rgba(237, 137, 54, 0.2);
-}
-
-.status-info {
-  background: rgba(66, 153, 225, 0.1);
-  color: var(--info-color);
-  border: 1px solid rgba(66, 153, 225, 0.2);
-}
-
-/* Glassmorphism effect */
-.glass-effect {
-  background: rgba(255, 255, 255, 0.25);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-}
-
-/* Dark mode support (future enhancement) */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background-color: #1a202c;
-    --surface-color: #2d3748;
-    --text-primary: #f7fafc;
-    --text-secondary: #e2e8f0;
-    --border-color: #4a5568;
+  .main-header .subtitle {
+    font-size: 1rem;
+  }
+  .module-header h1 {
+    font-size: 1.6rem;
+  }
+  .module-cards {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  .main .block-container {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
   }
 }
 
+@media (max-width: 480px) {
+  .main-header {
+    padding: 1.5rem 1rem;
+    border-radius: var(--border-radius);
+  }
+  .module-header {
+    padding: 1.25rem 1rem;
+    border-radius: var(--border-radius);
+  }
+  .module-card {
+    padding: 1.25rem;
+  }
+  .stButton > button {
+    padding: 0.65rem 1.25rem;
+    font-size: 0.88rem;
+  }
+}
+
+/* ============================================================
+   ACCESSIBILITY
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 3px;
+  border-radius: 3px;
+}

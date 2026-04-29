@@ -430,8 +430,7 @@ def renderizar_instrucoes_iniciais():
         design4_glassmorphism_premium(
             titulo="Explorar Zonas Climáticas Locais",
             subtitulo="Entenda o padrão climático em sua cidade através de 17 classes de morfologia urbana",
-            badge_text="🌍 Análise Climática",
-            cta_text="Gerar Meu Primeiro Mapa →"
+            badge_text="🌍 Análise Climática"
         ),
         unsafe_allow_html=True
     )

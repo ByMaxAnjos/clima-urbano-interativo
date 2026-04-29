@@ -252,8 +252,6 @@ def renderizar_pagina():
         # Seções condicionais baseadas na disponibilidade de dados
         if st.session_state.lcz_data is not None:
             renderizar_secoes_analise()
-        else:
-            renderizar_instrucoes_iniciais()
         
         # Seção de informações e ajuda
         renderizar_secao_ajuda()
@@ -420,48 +418,6 @@ def renderizar_secoes_analise():
                 
     except Exception as e:
         st.error(f"❌ Erro nas seções de análise: {str(e)}")
-
-
-def renderizar_instrucoes_iniciais():
-    """Renderiza seção inicial com Design 4 moderno."""
-
-    # Hero modernizado com Design 4 — Premium Glassmorphism
-    st.markdown(
-        design4_glassmorphism_premium(
-            titulo="Explorar Zonas Climáticas Locais",
-            subtitulo="Entenda o padrão climático em sua cidade através de 17 classes de morfologia urbana",
-            badge_text="🌍 Análise Climática"
-        ),
-        unsafe_allow_html=True
-    )
-
-    st.markdown("---")
-
-    # Guia rápido de uso (colapsado)
-    with st.expander("📖 Guia Rápido — Como Começar", expanded=False):
-        st.markdown("""
-        ### 🚀 Primeiros Passos
-
-        1. **Digite o nome de uma cidade** no campo acima (ex: "São Paulo, Brazil")
-        2. **Clique em "Gerar Mapa LCZ"** para processar os dados
-        3. **Aguarde o processamento** (2-5 minutos, depende do tamanho)
-        4. **Explore as visualizações** que aparecerão automaticamente
-
-        ### 💡 Dicas Importantes
-
-        - **Nomes de cidades:** Use nomes completos com país: "São Paulo, Brazil", "New York, USA"
-        - **Conexão:** Certifique-se de ter internet estável (dados baixados do Zenodo)
-        - **Paciência:** Processamento geoespacial é intensivo em CPU
-        - **Memória:** Cidades muito grandes (>10M habitantes) podem usar mais RAM
-
-        ### 🌍 Cidades Testadas com Sucesso
-
-        - São Paulo, Brazil
-        - Rio de Janeiro, Brazil
-        - New York, USA
-        - London, UK
-        - Tokyo, Japan
-        """)
 
 
 def renderizar_secao_ajuda():

@@ -32,6 +32,15 @@ from urllib3.exceptions import NewConnectionError
 warnings.filterwarnings("ignore")
 plt.rcParams["figure.dpi"] = 150
 
+# Exceções personalizadas para melhor tratamento de erros
+class GeocodeError(Exception):
+    """Exceção para erros de geocodificação."""
+    pass
+
+class DataProcessingError(Exception):
+    """Exceção para erros no processamento de dados."""
+    pass
+
 # Informações LCZ (constante global)
 LCZ_INFO = pd.DataFrame({
     "lcz": range(1, 18),
@@ -325,15 +334,6 @@ def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False):
     # Se o loop terminar sem sucesso
     raise ConnectionError("Não foi possível processar o mapa LCZ devido a problemas de conexão.")
 
-
-# Exceções personalizadas para melhor tratamento de erros
-class GeocodeError(Exception):
-    """Exceção para erros de geocodificação."""
-    pass
-
-class DataProcessingError(Exception):
-    """Exceção para erros no processamento de dados."""
-    pass
 
 def lcz_plot_map(x, isave=False, show_legend=True, save_extension="png", 
                  inclusive=False, figsize=(12, 8), **kwargs):

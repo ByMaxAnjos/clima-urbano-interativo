@@ -1,0 +1,89 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.sublime-project
+.sublime-workspace
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+.directory
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Streamlit cache and config
+.streamlit/cache/
+.streamlit/cache_client/
+.streamlit/secrets.toml
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Node modules (if using any JavaScript dependencies)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.md
+# Claude Code (local development only)
+.claude/
+agents/
+CLAUDE.md
+IMPLEMENTATION_SUMMARY.txt
+FILES_SUMMARY.txt
+# Local data files (uncomment if needed)
+# *.csv
+# *.geojson

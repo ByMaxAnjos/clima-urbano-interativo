@@ -1,0 +1,995 @@
+/*
+ * ============================================================
+ *  Forest Canopy Enhanced Theme — Streamlit
+ *  Urban Climate Educational Platform (LCZ4r / CLIMASUS4r)
+ *
+ *  Modernization: Glassmorphism + Dark Mode + Micro-animations
+ *  Design system: Glass morphic panels, frosted effects, professional typography
+ *  Palette: off-white sage · forest green · sky blue · terracotta
+ * ============================================================
+ */
+
+/* ============================================================
+   FONTS
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Source+Serif+4:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ============================================================
+   DESIGN TOKENS — Forest Canopy Enhanced
+   ============================================================ */
+:root {
+  /* Backgrounds — Light Mode */
+  --background-color:    #f8faf7;   /* off-white with green tint */
+  --surface-color:       #ffffff;   /* card / panel surface */
+  --surface-hover:       #f0f4ef;   /* very light sage on hover */
+  --surface-elevated:    #e6ede4;   /* pale sage — elevated elements */
+  --surface-glass:       rgba(255,255,255,0.85);  /* glassmorphic cards */
+  --surface-glass-dark:  rgba(255,255,255,0.72);  /* darker glass for depth */
+
+  /* Brand colours */
+  --primary-color:       #10b981;   /* emerald — primary accent */
+  --primary-dark:        #059669;   /* deep forest green */
+  --primary-light:       #d1fae5;   /* mint tint */
+  --secondary-color:     #0ea5e9;   /* sky blue */
+  --secondary-dark:      #0369a1;   /* deep sky blue */
+  --secondary-light:     #e0f2fe;   /* sky tint */
+  --accent-color:        #c2410c;   /* terracotta — heat / urgency */
+
+  /* Semantic colours */
+  --success-color:       #059669;
+  --warning-color:       #d97706;
+  --error-color:         #dc2626;
+  --info-color:          #0369a1;
+
+  /* Text */
+  --text-primary:        #1a2e1a;   /* deep forest */
+  --text-secondary:      #4a6741;   /* medium forest green */
+  --text-muted:          #8aaa82;   /* soft sage */
+
+  /* Borders */
+  --border-color:        rgba(45, 106, 79, 0.14);
+  --border-hover:        rgba(45, 106, 79, 0.28);
+  --border-glass:        rgba(16, 185, 129, 0.25);  /* subtle emerald glass border */
+
+  /* Gradients */
+  --background-gradient: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%);
+  --header-gradient:     linear-gradient(135deg, #1a2e1a 0%, #2d6a4f 50%, #0369a1 100%);
+  --subtle-gradient:     linear-gradient(135deg, #f0f4ef 0%, #f8faf7 100%);
+
+  /* Shadows — green-tinted (enhanced with glass effect) */
+  --shadow-sm:  0 1px 3px rgba(26, 46, 26, 0.07), 0 1px 2px rgba(26, 46, 26, 0.04);
+  --shadow-md:  0 4px 12px rgba(26, 46, 26, 0.08), 0 2px 4px rgba(26, 46, 26, 0.04);
+  --shadow-lg:  0 12px 32px rgba(26, 46, 26, 0.10), 0 4px 8px rgba(26, 46, 26, 0.05);
+  --shadow-xl:  0 20px 48px rgba(26, 46, 26, 0.12), 0 8px 16px rgba(26, 46, 26, 0.06);
+  --shadow-glass: 0 8px 32px rgba(26, 46, 26, 0.12), inset 1px 1px 1px rgba(255, 255, 255, 0.4);
+
+  /* Border radius */
+  --border-radius-sm: 6px;
+  --border-radius:    12px;
+  --border-radius-lg: 16px;
+  --border-radius-xl: 24px;
+
+  /* Transitions */
+  --transition:      all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: all 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);  /* bouncy easing */
+
+  /* Backdrop blur */
+  --blur-sm: blur(8px);
+  --blur-md: blur(16px);
+  --blur-lg: blur(24px);
+}
+
+/* Dark Mode overrides */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Backgrounds — Dark Mode */
+    --background-color:    #0f1419;   /* deep slate */
+    --surface-color:       #1a1f26;   /* dark surface */
+    --surface-hover:       #242b34;   /* slightly lighter on hover */
+    --surface-elevated:    #2d3440;   /* elevated dark surface */
+    --surface-glass:       rgba(26, 31, 38, 0.80);   /* dark glassmorphic */
+    --surface-glass-dark:  rgba(15, 20, 25, 0.75);   /* darker glass for depth */
+
+    /* Text colors for dark mode */
+    --text-primary:        #e8f5e9;   /* light forest tint */
+    --text-secondary:      #b8e6c5;   /* lighter sage green */
+    --text-muted:          #7fa895;   /* muted sage for dark mode */
+
+    /* Border colors dark mode */
+    --border-color:        rgba(16, 185, 129, 0.15);
+    --border-hover:        rgba(16, 185, 129, 0.28);
+    --border-glass:        rgba(16, 185, 129, 0.30);
+
+    /* Shadows for dark mode */
+    --shadow-sm:  0 1px 3px rgba(0, 0, 0, 0.30), 0 1px 2px rgba(0, 0, 0, 0.20);
+    --shadow-md:  0 4px 12px rgba(0, 0, 0, 0.40), 0 2px 4px rgba(0, 0, 0, 0.15);
+    --shadow-lg:  0 12px 32px rgba(0, 0, 0, 0.50), 0 4px 8px rgba(0, 0, 0, 0.25);
+    --shadow-xl:  0 20px 48px rgba(0, 0, 0, 0.60), 0 8px 16px rgba(0, 0, 0, 0.35);
+    --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.40), inset 1px 1px 2px rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: var(--background-color);
+  color: var(--text-primary);
+  margin: 0;
+  padding: 0;
+  transition: background-color 0.5s ease, color 0.5s ease;
+}
+
+/* ============================================================
+   STREAMLIT MAIN CONTAINER
+   ============================================================ */
+.main .block-container {
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* ============================================================
+   SIDEBAR
+   ============================================================ */
+/* Legacy Streamlit class */
+.css-1d391kg {
+  background: linear-gradient(180deg, var(--surface-color) 0%, var(--surface-hover) 100%);
+  border-right: 1px solid var(--border-color);
+  box-shadow: var(--shadow-md);
+  transition: var(--transition);
+}
+
+.css-1d391kg .css-1v0mbdj {
+  padding: 1.5rem 1rem;
+}
+
+/* Modern Streamlit sidebar selector */
+section[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, var(--surface-color) 0%, var(--surface-hover) 100%);
+  border-right: 1px solid var(--border-color);
+  transition: var(--transition);
+}
+
+section[data-testid="stSidebar"] .block-container {
+  padding: 1.5rem 1rem;
+}
+
+/* ============================================================
+   MAIN HEADER — Hero banner with parallax
+   ============================================================ */
+.main-header {
+  background: var(--header-gradient);
+  color: white;
+  padding: 3rem 2rem;
+  border-radius: var(--border-radius-lg);
+  margin-bottom: 2rem;
+  text-align: center;
+  box-shadow: var(--shadow-xl);
+  position: relative;
+  overflow: hidden;
+  animation: parallaxFloat 6s ease-in-out infinite;
+}
+
+.main-header::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(ellipse at top right, rgba(14,165,233,0.25) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.main-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--background-gradient);
+}
+
+.main-header h1 {
+  margin: 0 0 0.5rem 0;
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 800;
+  font-family: 'Source Serif 4', Georgia, serif;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  letter-spacing: -0.02em;
+}
+
+.main-header .subtitle {
+  font-size: 1.2rem;
+  opacity: 0.92;
+  margin: 0;
+  font-weight: 400;
+}
+
+/* ============================================================
+   MODULE HEADER
+   ============================================================ */
+.module-header {
+  background: var(--header-gradient);
+  color: white;
+  padding: 2rem;
+  border-radius: var(--border-radius-lg);
+  margin-bottom: 2rem;
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  overflow: hidden;
+  animation: fadeInUp 0.6s ease-out both;
+}
+
+.module-header::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(ellipse at top left, rgba(16,185,129,0.20) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.module-header h1 {
+  margin: 0 0 0.5rem 0;
+  font-size: clamp(1.5rem, 3vw, 2.5rem);
+  font-weight: 700;
+  font-family: 'Source Serif 4', Georgia, serif;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.15);
+}
+
+.module-header p {
+  margin: 0;
+  opacity: 0.92;
+  font-size: 1.1rem;
+  font-weight: 400;
+}
+
+/* ============================================================
+   MODULE CARDS — Glassmorphism Enhanced
+   ============================================================ */
+.module-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.module-card {
+  background: var(--surface-glass);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--border-radius-lg);
+  padding: 2rem;
+  box-shadow: var(--shadow-glass);
+  transition: var(--transition-smooth);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Left accent stripe */
+.module-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--background-gradient);
+  transform: scaleY(0);
+  transform-origin: bottom;
+  transition: var(--transition);
+}
+
+.module-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 16px 48px rgba(16, 185, 129, 0.18), inset 1px 1px 1px rgba(255, 255, 255, 0.5);
+  border-color: var(--primary-color);
+  backdrop-filter: var(--blur-lg);
+}
+
+.module-card:hover::before {
+  transform: scaleY(1);
+}
+
+.module-card h4 {
+  color: var(--primary-dark);
+  margin: 0 0 0.75rem 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-family: 'Source Serif 4', Georgia, serif;
+}
+
+.module-card p {
+  color: var(--text-secondary);
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+
+/* ============================================================
+   GLASS MORPHISM COMPONENTS
+   ============================================================ */
+
+/* Glass Card — Reusable frosted glass panel */
+.glass-card {
+  background: var(--surface-glass);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--border-radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-glass);
+  transition: var(--transition);
+}
+
+.glass-card:hover {
+  backdrop-filter: var(--blur-lg);
+  box-shadow: 0 12px 40px rgba(16, 185, 129, 0.15), inset 1px 1px 2px rgba(255, 255, 255, 0.3);
+}
+
+/* Glass Button — Frosted glass button */
+.glass-button {
+  background: var(--surface-glass);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  border: 1.5px solid var(--border-glass);
+  border-radius: var(--border-radius);
+  padding: 0.75rem 1.5rem;
+  color: var(--primary-dark);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.20);
+  backdrop-filter: var(--blur-lg);
+}
+
+.glass-button:active {
+  transform: translateY(-1px);
+}
+
+/* Glass Panel — Large frosted container */
+.glass-panel {
+  background: var(--surface-glass-dark);
+  backdrop-filter: var(--blur-lg);
+  -webkit-backdrop-filter: var(--blur-lg);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--border-radius-xl);
+  padding: 2rem;
+  box-shadow: var(--shadow-glass);
+  margin: 1.5rem 0;
+}
+
+/* ============================================================
+   STREAMLIT BUTTONS — Enhanced with Ripple Effect
+   ============================================================ */
+.stButton > button {
+  background: var(--background-gradient);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius);
+  padding: 0.75rem 1.75rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: var(--transition);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Ripple effect on button */
+.stButton > button::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.stButton > button:active::after {
+  width: 300px;
+  height: 300px;
+}
+
+/* Shimmer effect on hover */
+.stButton > button::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+  transition: var(--transition);
+  z-index: 1;
+}
+
+.stButton > button:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.stButton > button:hover::before {
+  left: 100%;
+}
+
+.stButton > button:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Secondary / outline button */
+.stButton > button[kind="secondary"] {
+  background: var(--surface-glass);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  color: var(--primary-dark);
+  border: 1.5px solid var(--border-glass);
+  box-shadow: var(--shadow-glass);
+}
+
+.stButton > button[kind="secondary"]:hover {
+  background: var(--primary-light);
+  border-color: var(--primary-dark);
+  backdrop-filter: var(--blur-lg);
+}
+
+/* ============================================================
+   METRICS — Enhanced with Glassmorphism
+   ============================================================ */
+.metric-container {
+  background: var(--surface-glass);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--border-radius-lg);
+  padding: 1.5rem;
+  text-align: center;
+  box-shadow: var(--shadow-glass);
+  transition: var(--transition);
+}
+
+.metric-container:hover {
+  box-shadow: 0 12px 40px rgba(16, 185, 129, 0.15), inset 1px 1px 2px rgba(255, 255, 255, 0.3);
+  transform: translateY(-4px);
+  backdrop-filter: var(--blur-lg);
+}
+
+.metric-container .metric-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--primary-dark);
+  font-family: 'Source Serif 4', Georgia, serif;
+}
+
+.metric-container .metric-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Streamlit native metric */
+[data-testid="metric-container"] {
+  background: var(--surface-glass);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--border-radius);
+  padding: 1rem 1.25rem;
+  box-shadow: var(--shadow-glass);
+  transition: var(--transition);
+}
+
+[data-testid="metric-container"]:hover {
+  box-shadow: 0 12px 40px rgba(16, 185, 129, 0.15), inset 1px 1px 2px rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+  backdrop-filter: var(--blur-lg);
+}
+
+[data-testid="metric-container"] [data-testid="stMetricValue"] {
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+[data-testid="metric-container"] [data-testid="stMetricDelta"] svg {
+  fill: var(--primary-color);
+}
+
+/* ============================================================
+   ALERTS — Enhanced with Glass effect
+   ============================================================ */
+.stAlert {
+  border-radius: var(--border-radius);
+  border: none;
+  box-shadow: var(--shadow-sm);
+  font-weight: 500;
+  backdrop-filter: blur(8px);
+}
+
+/* Success */
+.stSuccess,
+div[data-baseweb="notification"][kind="positive"] {
+  background: linear-gradient(135deg, rgba(209, 250, 229, 0.92), rgba(167, 243, 208, 0.88));
+  color: #064e3b;
+  border-left: 4px solid var(--success-color);
+  border-radius: var(--border-radius);
+}
+
+/* Error */
+.stError,
+div[data-baseweb="notification"][kind="negative"] {
+  background: linear-gradient(135deg, rgba(254, 226, 226, 0.92), rgba(254, 202, 202, 0.88));
+  color: #7f1d1d;
+  border-left: 4px solid var(--error-color);
+  border-radius: var(--border-radius);
+}
+
+/* Warning */
+.stWarning,
+div[data-baseweb="notification"][kind="warning"] {
+  background: linear-gradient(135deg, rgba(254, 243, 199, 0.92), rgba(253, 230, 138, 0.88));
+  color: #78350f;
+  border-left: 4px solid var(--warning-color);
+  border-radius: var(--border-radius);
+}
+
+/* Info */
+.stInfo,
+div[data-baseweb="notification"][kind="info"] {
+  background: linear-gradient(135deg, rgba(224, 242, 254, 0.92), rgba(186, 230, 253, 0.88));
+  color: #0c4a6e;
+  border-left: 4px solid var(--info-color);
+  border-radius: var(--border-radius);
+}
+
+/* ============================================================
+   EXPANDERS — Glass effect
+   ============================================================ */
+.streamlit-expanderHeader {
+  background: var(--surface-glass);
+  backdrop-filter: var(--blur-sm);
+  -webkit-backdrop-filter: var(--blur-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  font-weight: 600;
+  color: var(--text-primary);
+  transition: var(--transition);
+}
+
+.streamlit-expanderHeader:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-hover);
+  color: var(--primary-dark);
+  backdrop-filter: var(--blur-md);
+}
+
+/* ============================================================
+   DATA TABLES — Glass effect
+   ============================================================ */
+.stDataFrame {
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-color);
+}
+
+.stDataFrame table {
+  font-size: 0.88rem;
+  font-family: 'Inter', sans-serif;
+}
+
+.stDataFrame th {
+  background: var(--surface-elevated);
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 2px solid var(--border-hover);
+}
+
+.stDataFrame tr:hover td {
+  background: var(--surface-hover);
+}
+
+/* ============================================================
+   FILE UPLOADER — Glass effect
+   ============================================================ */
+.stFileUploader {
+  border: 2px dashed var(--border-color);
+  border-radius: var(--border-radius-lg);
+  padding: 3rem 2rem;
+  text-align: center;
+  transition: var(--transition);
+  background: var(--surface-glass);
+  backdrop-filter: var(--blur-sm);
+}
+
+.stFileUploader:hover {
+  border-color: var(--primary-color);
+  background: rgba(16, 185, 129, 0.08);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: var(--blur-md);
+}
+
+/* ============================================================
+   INPUTS — Selectbox, TextInput, NumberInput with Glass
+   ============================================================ */
+.stSelectbox > div > div,
+.stTextInput > div > div,
+.stNumberInput > div > div {
+  border-radius: var(--border-radius);
+  border-color: var(--border-color);
+  background: var(--surface-color);
+  transition: var(--transition-fast);
+}
+
+.stSelectbox > div > div:focus-within,
+.stTextInput > div > div:focus-within,
+.stNumberInput > div > div:focus-within {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+  background: var(--surface-glass);
+}
+
+/* Slider */
+.stSlider [data-baseweb="slider"] [data-testid="stThumbValue"] {
+  background: var(--primary-color);
+  color: white;
+  border-radius: 100px;
+}
+
+/* ============================================================
+   CHECKBOX & RADIO
+   ============================================================ */
+.stCheckbox {
+  margin: 0.75rem 0;
+}
+
+.stCheckbox > label {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.stRadio > div {
+  gap: 0.5rem;
+}
+
+.stRadio > div > label {
+  background: var(--surface-color);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 0.75rem 1rem;
+  margin: 0.2rem 0;
+  transition: var(--transition);
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.stRadio > div > label:hover {
+  background: var(--surface-glass);
+  border-color: var(--primary-color);
+  color: var(--primary-dark);
+  backdrop-filter: var(--blur-sm);
+}
+
+.stRadio > div > label[data-checked="true"] {
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  border-color: var(--primary-color);
+  font-weight: 600;
+}
+
+/* ============================================================
+   TABS — Glass effect
+   ============================================================ */
+.stTabs [data-baseweb="tab-list"] {
+  gap: 8px;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.stTabs [data-baseweb="tab"] {
+  background: var(--surface-color);
+  border-radius: var(--border-radius) var(--border-radius) 0 0;
+  border: 1px solid var(--border-color);
+  border-bottom: none;
+  padding: 0.75rem 1.25rem;
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  transition: var(--transition);
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+  background: var(--surface-glass);
+  color: var(--primary-dark);
+  backdrop-filter: var(--blur-sm);
+}
+
+.stTabs [aria-selected="true"] {
+  background: var(--surface-color);
+  color: var(--primary-dark);
+  border-color: var(--primary-color);
+  border-bottom: 2px solid var(--surface-color);
+  margin-bottom: -2px;
+}
+
+/* ============================================================
+   PLOTLY CHARTS — Glass effect
+   ============================================================ */
+.js-plotly-plot {
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+/* ============================================================
+   FOLIUM MAPS — Glass effect
+   ============================================================ */
+.folium-map {
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-color);
+}
+
+/* ============================================================
+   STATUS INDICATORS — Glass effect
+   ============================================================ */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 100px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(8px);
+  transition: var(--transition-fast);
+}
+
+.status-success {
+  background: rgba(209, 250, 229, 0.80);
+  color: #064e3b;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.12);
+}
+
+.status-warning {
+  background: rgba(254, 243, 199, 0.80);
+  color: #78350f;
+  border: 1px solid rgba(217, 119, 6, 0.35);
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.12);
+}
+
+.status-info {
+  background: rgba(224, 242, 254, 0.80);
+  color: #0c4a6e;
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.12);
+}
+
+.status-error {
+  background: rgba(254, 226, 226, 0.80);
+  color: #7f1d1d;
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.12);
+}
+
+/* ============================================================
+   LOADING SHIMMER
+   ============================================================ */
+.loading-shimmer {
+  background: linear-gradient(90deg, var(--surface-hover) 25%, var(--surface-elevated) 50%, var(--surface-hover) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite;
+  border-radius: var(--border-radius);
+}
+
+/* ============================================================
+   SCROLLBAR — Glassmorphic
+   ============================================================ */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--primary-color), var(--secondary-color));
+  border-radius: 4px;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--primary-dark), var(--secondary-dark));
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+}
+
+/* ============================================================
+   ANIMATIONS — Micro-animations & Effects
+   ============================================================ */
+
+/* Parallax floating effect */
+@keyframes parallaxFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+/* Shimmer animation */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Fade in up with ease-out */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Slide in from left */
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Pulse animation */
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.04); }
+}
+
+/* Glow animation */
+@keyframes glow {
+  0%, 100% { box-shadow: var(--shadow-glass); }
+  50%      { box-shadow: 0 8px 32px rgba(16, 185, 129, 0.25), inset 1px 1px 1px rgba(255, 255, 255, 0.4); }
+}
+
+/* Float up animation */
+@keyframes floatUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Animation utilities */
+.fade-in        { animation: fadeIn      0.55s ease-out both; }
+.fade-in-up     { animation: fadeInUp    0.60s ease-out both; }
+.slide-in-left  { animation: slideInLeft 0.55s ease-out both; }
+.pulse-hover:hover { animation: pulse 0.55s ease-in-out; }
+.glow-effect    { animation: glow 2s ease-in-out infinite; }
+.float-up       { animation: floatUp 0.75s ease-out both; }
+
+/* ============================================================
+   RESPONSIVE DESIGN
+   ============================================================ */
+@media (max-width: 768px) {
+  .main-header {
+    padding: 2rem 1.25rem;
+  }
+  .main-header h1 {
+    font-size: 2rem;
+  }
+  .main-header .subtitle {
+    font-size: 1rem;
+  }
+  .module-header h1 {
+    font-size: 1.6rem;
+  }
+  .module-cards {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  .main .block-container {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+  .glass-panel {
+    padding: 1.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .main-header {
+    padding: 1.5rem 1rem;
+    border-radius: var(--border-radius);
+  }
+  .module-header {
+    padding: 1.25rem 1rem;
+    border-radius: var(--border-radius);
+  }
+  .module-card {
+    padding: 1.25rem;
+  }
+  .stButton > button {
+    padding: 0.65rem 1.25rem;
+    font-size: 0.88rem;
+  }
+  .glass-card {
+    padding: 1rem;
+  }
+  .glass-panel {
+    padding: 1rem;
+  }
+}
+
+/* ============================================================
+   ACCESSIBILITY — Motion & Focus
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: more) {
+  .glass-card,
+  .glass-button,
+  .glass-panel,
+  .module-card {
+    border-width: 2px;
+  }
+}
+
+/* ============================================================
+   PRINT STYLES
+   ============================================================ */
+@media print {
+  .glass-card,
+  .glass-button,
+  .glass-panel {
+    background: white;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}

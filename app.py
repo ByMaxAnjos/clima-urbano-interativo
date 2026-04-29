@@ -4,7 +4,7 @@ import streamlit as st
 from streamlit_option_menu import option_menu
 import os
 from modules import inicio, explorar, investigar, visualizar, simular, avaliacao, info
-from utils import processamento, simulacao, lcz4r, lcz_visualizer
+from utils import processamento, simulacao, lcz4r_fixes, lcz_visualizer
 
 # Configuração da página
 st.set_page_config(
@@ -29,7 +29,7 @@ st.set_page_config(
 # Carregar CSS customizado
 def load_css():
     """Carrega o arquivo CSS customizado."""
-    css_path = os.path.join(os.path.dirname(__file__), "assets", "css", "style.css")
+    css_path = os.path.join(os.path.dirname(__file__), "assets", "css", "style-enhanced.css")
     if os.path.exists(css_path):
         with open(css_path) as f:
             st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)

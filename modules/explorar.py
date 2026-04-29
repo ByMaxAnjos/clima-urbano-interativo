@@ -17,7 +17,11 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import json
 import time
+import streamlit as st
+import pandas as pd
+import geopandas as gpd
 from utils.lcz4r import lcz_get_map, process_lcz_map, enhance_lcz_data, lcz_plot_map
+from utils.ui_components_modern import design4_glassmorphism_premium
 
 # Configurar matplotlib para usar backend não-interativo
 matplotlib.use('Agg')
@@ -419,34 +423,45 @@ def renderizar_secoes_analise():
 
 
 def renderizar_instrucoes_iniciais():
-    """Renderiza instruções quando não há dados carregados."""
-    
-    st.info("ℹ️ **Bem-vindo ao Módulo Explorar!** Gere um mapa LCZ primeiro para acessar todas as funcionalidades.")
-    
-    with st.expander("📖 Guia Rápido de Uso", expanded=True):
+    """Renderiza seção inicial com Design 4 moderno."""
+
+    # Hero modernizado com Design 4 — Premium Glassmorphism
+    st.markdown(
+        design4_glassmorphism_premium(
+            titulo="Explorar Zonas Climáticas Locais",
+            subtitulo="Entenda o padrão climático em sua cidade através de 17 classes de morfologia urbana",
+            badge_text="🌍 Análise Climática",
+            cta_text="Gerar Meu Primeiro Mapa →"
+        ),
+        unsafe_allow_html=True
+    )
+
+    st.markdown("---")
+
+    # Guia rápido de uso (colapsado)
+    with st.expander("📖 Guia Rápido — Como Começar", expanded=False):
         st.markdown("""
         ### 🚀 Primeiros Passos
-        
-        1. **Digite o nome de uma cidade** no campo acima
+
+        1. **Digite o nome de uma cidade** no campo acima (ex: "São Paulo, Brazil")
         2. **Clique em "Gerar Mapa LCZ"** para processar os dados
-        3. **Aguarde o processamento** (pode levar alguns minutos)
+        3. **Aguarde o processamento** (2-5 minutos, depende do tamanho)
         4. **Explore as visualizações** que aparecerão automaticamente
-        
+
         ### 💡 Dicas Importantes
-        
-        - **Nomes de cidades:** Use nomes completos como "São Paulo, Brazil" ou "New York, USA"
-        - **Conexão:** Certifique-se de ter uma conexão estável com a internet
-        - **Paciência:** O processamento pode levar 2-5 minutos dependendo do tamanho da cidade
-        - **Memória:** Cidades muito grandes podem usar mais memória
-        
-        ### 🌍 Exemplos de Cidades Testadas
-        
+
+        - **Nomes de cidades:** Use nomes completos com país: "São Paulo, Brazil", "New York, USA"
+        - **Conexão:** Certifique-se de ter internet estável (dados baixados do Zenodo)
+        - **Paciência:** Processamento geoespacial é intensivo em CPU
+        - **Memória:** Cidades muito grandes (>10M habitantes) podem usar mais RAM
+
+        ### 🌍 Cidades Testadas com Sucesso
+
         - São Paulo, Brazil
         - Rio de Janeiro, Brazil
         - New York, USA
         - London, UK
         - Tokyo, Japan
-        - Paris, France
         """)
 
 

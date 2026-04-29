@@ -8,6 +8,7 @@ shapely>=2.0.0
 branca>=0.8.0
 streamlit-option-menu>=0.3.12
 scipy>=1.10.0
+kaleido>=0.2.1
 # Dependências para LCZ4r
 osmnx
 matplotlib

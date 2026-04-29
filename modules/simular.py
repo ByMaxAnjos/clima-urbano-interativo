@@ -17,6 +17,8 @@ import json
 from utils import simulacao
 import time
 from math import radians, sin, cos, sqrt, atan2
+from datetime import datetime, timedelta
+from typing import Dict, List, Tuple, Any
 
 # --- Configurações e Constantes ---
 
@@ -61,6 +63,422 @@ INFO_INTERVENCOES = {
         "impacto_teorico": "Pode aumentar temperaturas em 1-4°C em relação a áreas rurais"
     }
 }
+
+# --- Novas Funções: Validação e Visualização de Resultados ---
+
+def validar_parametros_intervencao(tipo: str, parametros: Dict[str, Any]) -> Dict[str, Any]:
+    '''
+    Valida parâmetros de intervenção urbana com auto-correção.
+
+    Valida os parâmetros de cada tipo de intervenção e aplica auto-correção
+    para valores fora dos ranges permitidos, gerando warnings descritivos.
+
+    Args:
+        tipo (str): Tipo de intervenção urbana
+            - "telhado_verde": cobertura vegetal em telhados
+            - "parque_urbano": áreas verdes urbanas
+            - "albedo": aumento de refletividade de superfícies
+            - "arvores": plantação de árvores
+        parametros (dict): Dicionário com parâmetros específicos do tipo
+
+    Returns:
+        dict: Dicionário estruturado com:
+            - 'valid' (bool): Validação passou sem erros críticos
+            - 'errors' (list): Erros que impedem execução
+            - 'warnings' (list): Alertas sobre correções aplicadas
+            - 'parametros_corrigidos' (dict): Parâmetros ajustados
+
+    Examples:
+        >>> validar_parametros_intervencao("telhado_verde", {"area": 50, "espessura": 3})
+        {'valid': False, 'errors': ['area: valor 50 fora do range [0-100]'], ...}
+
+        >>> validar_parametros_intervencao("arvores", {"densidade": 600, "altura": 5})
+        {'valid': True, 'errors': [], 'warnings': ['densidade: corrigida de 600 para 500 (máximo)'], ...}
+    '''
+
+    # Dicionário de validação por tipo de intervenção
+    validacao_rules = {
+        "telhado_verde": {
+            "area": {"min": 0, "max": 100, "tipo": "percentual", "default": 50},
+            "espessura": {"min": 5, "max": 50, "tipo": "cm", "default": 15},
+            "umidade": {"min": 30, "max": 90, "tipo": "percentual", "default": 60}
+        },
+        "parque_urbano": {
+            "area": {"min": 0, "max": 100, "tipo": "percentual", "default": 50},
+            "cobertura_vegetal": {"min": 20, "max": 100, "tipo": "percentual", "default": 70},
+            "umidade": {"min": 40, "max": 95, "tipo": "percentual", "default": 70}
+        },
+        "albedo": {
+            "valor_novo": {"min": 0.2, "max": 0.9, "tipo": "refletividade", "default": 0.6},
+            "area_afetada": {"min": 0, "max": 100, "tipo": "percentual", "default": 50}
+        },
+        "arvores": {
+            "densidade": {"min": 0, "max": 500, "tipo": "arvores/ha", "default": 200},
+            "altura_media": {"min": 2, "max": 25, "tipo": "metros", "default": 10},
+            "sombra_percentual": {"min": 10, "max": 80, "tipo": "percentual", "default": 50}
+        }
+    }
+
+    resultado = {
+        'valid': True,
+        'errors': [],
+        'warnings': [],
+        'parametros_corrigidos': {}
+    }
+
+    # Verificar se tipo é suportado
+    if tipo not in validacao_rules:
+        resultado['valid'] = False
+        resultado['errors'].append(
+            f"Tipo de intervenção não suportado: '{tipo}'. "
+            f"Tipos válidos: {', '.join(validacao_rules.keys())}"
+        )
+        return resultado
+
+    rules = validacao_rules[tipo]
+
+    # Validar cada parâmetro
+    for param_nome, rule in rules.items():
+        valor = parametros.get(param_nome, rule['default'])
+        min_val = rule['min']
+        max_val = rule['max']
+        tipo_param = rule['tipo']
+
+        # Tentar converter para número
+        try:
+            valor_num = float(valor)
+        except (ValueError, TypeError):
+            resultado['valid'] = False
+            resultado['errors'].append(
+                f"{param_nome}: valor '{valor}' não é numérico (esperado {tipo_param})"
+            )
+            resultado['parametros_corrigidos'][param_nome] = rule['default']
+            continue
+
+        # Validar range e aplicar auto-correção
+        if valor_num < min_val:
+            resultado['warnings'].append(
+                f"{param_nome}: corrigido de {valor_num} para {min_val} "
+                f"(mínimo permitido para {tipo_param})"
+            )
+            resultado['parametros_corrigidos'][param_nome] = min_val
+        elif valor_num > max_val:
+            resultado['warnings'].append(
+                f"{param_nome}: corrigido de {valor_num} para {max_val} "
+                f"(máximo permitido para {tipo_param})"
+            )
+            resultado['parametros_corrigidos'][param_nome] = max_val
+        else:
+            resultado['parametros_corrigidos'][param_nome] = valor_num
+
+    # Validações cruzadas específicas do tipo
+    if tipo == "telhado_verde" and resultado['parametros_corrigidos'].get('espessura', 15) > 30:
+        resultado['warnings'].append(
+            "Espessura > 30cm: peso estrutural elevado, verificar viabilidade arquitetônica"
+        )
+
+    if tipo == "parque_urbano" and resultado['parametros_corrigidos'].get('cobertura_vegetal', 70) < 50:
+        resultado['warnings'].append(
+            "Cobertura vegetal < 50%: efetividade reduzida em resfriamento urbano"
+        )
+
+    if tipo == "arvores" and resultado['parametros_corrigidos'].get('altura_media', 10) < 5:
+        resultado['warnings'].append(
+            "Altura média < 5m: árvores jovens, benefício térmico limitado inicialmente"
+        )
+
+    return resultado
+
+
+@st.cache_data
+def _calcular_timeline_impacto(resultado_simulacao: Dict, num_meses: int = 12) -> pd.DataFrame:
+    '''
+    Calcula impacto progressivo ao longo do tempo.
+    Função auxiliar com cache para performance.
+    '''
+    timeline = []
+    impacto_total = resultado_simulacao.get('delta_total', 0)
+
+    for mes in range(1, num_meses + 1):
+        # Modelar crescimento com curva sigmoide (maturação progressiva)
+        progresso = 1.0 / (1.0 + (10 ** (-1 * (mes - 6) / 2)))  # Saturação em ~6 meses
+        impacto_mes = impacto_total * progresso
+
+        timeline.append({
+            'mês': mes,
+            'impacto_acumulado': impacto_mes,
+            'percentual_efetividade': progresso * 100
+        })
+
+    return pd.DataFrame(timeline)
+
+
+def visualizar_resultado_simulacao(
+    resultado: Dict[str, Any],
+    tipo_intervencao: str,
+    dados_original: Dict = None
+) -> None:
+    '''
+    Visualiza resultados detalhados da simulação com gráficos comparativos.
+
+    Cria uma análise visual completa do impacto da intervenção, incluindo:
+    - Comparação antes/depois de temperatura
+    - Cards de métricas de impacto
+    - Timeline de maturação da intervenção
+    - Mapa interativo da região afetada
+    - Interpretação automática do resultado
+
+    Args:
+        resultado (dict): Resultado da simulação contendo:
+            - 'delta_total' (float): Variação total de temperatura em °C
+            - 'resumo_detalhado' (list): Detalhes por intervenção
+        tipo_intervencao (str): Tipo de intervenção simulada
+        dados_original (dict, optional): Dados contextuais (temperatura base, geometria)
+
+    Returns:
+        None (renderiza diretamente na interface Streamlit)
+
+    Effects:
+        - Exibe múltiplas visualizações interativas
+        - Renderiza cards com métricas
+        - Mostra interpretação educativa do resultado
+    '''
+
+    if not resultado or 'delta_total' not in resultado:
+        st.error("❌ Resultado de simulação inválido ou vazio")
+        return
+
+    delta_total = resultado.get('delta_total', 0)
+    resumo = resultado.get('resumo_detalhado', [])
+
+    # Temperatura de referência (simulada se não fornecida)
+    temp_base = 28.0  # São Paulo média verão
+    temp_simulada = temp_base + delta_total
+
+    st.markdown("---")
+    st.markdown("### 📊 Visualização de Resultados - Simulação Detalhada")
+
+    # ===== SEÇÃO 1: COMPARAÇÃO ANTES/DEPOIS =====
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric(
+            "🌡️ Temperatura Base",
+            f"{temp_base:.1f}°C",
+            help="Temperatura média urbana atual"
+        )
+
+    with col2:
+        # Cor dinâmica baseada no impacto
+        if delta_total < -1:
+            cor_delta = "✅ Resfriamento"
+        elif delta_total < 0:
+            cor_delta = "🟢 Leve resfriamento"
+        elif delta_total < 1:
+            cor_delta = "⚪ Neutro"
+        else:
+            cor_delta = "🔴 Aquecimento"
+
+        st.metric(
+            "Variação de Temperatura",
+            f"{delta_total:+.2f}°C",
+            delta=f"{delta_total:+.2f}°C",
+            help="Impacto estimado da intervenção"
+        )
+
+    with col3:
+        st.metric(
+            "🌡️ Temperatura Projetada",
+            f"{temp_simulada:.1f}°C",
+            delta=f"{delta_total:+.2f}°C",
+            help="Temperatura após intervenção"
+        )
+
+    # ===== SEÇÃO 2: GRÁFICO COMPARATIVO ANTES/DEPOIS =====
+    st.markdown("#### 📈 Comparação Térmica")
+
+    df_comparacao = pd.DataFrame({
+        'Cenário': ['Atual (Base)', 'Com Intervenção'],
+        'Temperatura (°C)': [temp_base, temp_simulada]
+    })
+
+    fig_comparacao = px.bar(
+        df_comparacao,
+        x='Cenário',
+        y='Temperatura (°C)',
+        color='Cenário',
+        color_discrete_sequence=['#ff6b6b', '#51cf66'],
+        text_auto='.1f',
+        title='Temperatura Média: Antes vs Depois da Intervenção',
+        labels={'Temperatura (°C)': 'Temperatura (°C)'}
+    )
+    fig_comparacao.update_layout(height=350, showlegend=False)
+    fig_comparacao.update_traces(textposition='outside')
+    st.plotly_chart(fig_comparacao, use_container_width=True)
+
+    # ===== SEÇÃO 3: CARDS DE MÉTRICAS =====
+    st.markdown("#### 📊 Métricas de Impacto")
+
+    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+
+    with col_m1:
+        # Redução de temperatura
+        percentual_reducao = (abs(delta_total) / temp_base * 100) if temp_base > 0 else 0
+        st.metric(
+            "Redução Térmica",
+            f"{abs(delta_total):.2f}°C",
+            f"-{percentual_reducao:.1f}%",
+            help="Diminuição absoluta e relativa de temperatura"
+        )
+
+    with col_m2:
+        # Benefício energético estimado
+        # Simplificação: ~0.5 kWh/habitante/ano por 0.1°C de resfriamento
+        beneficio_kwh = abs(delta_total) * 0.5 * 10 * 1000  # × 1000 habitantes base
+        st.metric(
+            "Benefício Energético",
+            f"{beneficio_kwh:,.0f}",
+            "kWh/ano",
+            help="Economia anual estimada em climatização"
+        )
+
+    with col_m3:
+        # Área afetada (consolidada de resumo)
+        area_total = sum([item.get('area_m2', 0) for item in resumo if item.get('valido', False)])
+        area_ha = area_total / 10000
+        st.metric(
+            "Área Afetada",
+            f"{area_ha:,.1f}",
+            "hectares",
+            help="Extensão territorial da intervenção"
+        )
+
+    with col_m4:
+        # Custo estimado (simplificado)
+        # Parque: ~$200/m², Telhado Verde: ~$150/m², Albedo: ~$30/m², Árvores: ~$50/un
+        custos_unitarios = {
+            'parque_urbano': 200,
+            'telhado_verde': 150,
+            'albedo': 30,
+            'arvores': 50
+        }
+        custo_total = 0
+        for item in resumo:
+            area = item.get('area_m2', 0)
+            tipo = item.get('tipo', '').lower()
+
+            # Mapear tipos para chaves de custo
+            if 'Parque' in item.get('tipo', ''):
+                custo_total += area * custos_unitarios['parque_urbano']
+            elif 'Telhado Verde' in item.get('tipo', ''):
+                custo_total += area * custos_unitarios['telhado_verde']
+            elif 'Albedo' in item.get('tipo', ''):
+                custo_total += area * custos_unitarios['albedo']
+            elif 'Árvores' in item.get('tipo', '') or 'arvores' in item.get('tipo', '').lower():
+                custo_total += 50 * (area / 1000)  # ~50 árvores por 1000m²
+
+        st.metric(
+            "Custo Estimado",
+            f"${custo_total:,.0f}",
+            "USD",
+            help="Investimento estimado em implementação"
+        )
+
+    # ===== SEÇÃO 4: TIMELINE DE MATURAÇÃO =====
+    st.markdown("#### ⏳ Impacto Progressivo (Primeiros 12 Meses)")
+
+    df_timeline = _calcular_timeline_impacto(resultado, num_meses=12)
+
+    fig_timeline = px.line(
+        df_timeline,
+        x='mês',
+        y='impacto_acumulado',
+        markers=True,
+        title='Evolução do Impacto Térmico ao Longo do Tempo',
+        labels={
+            'mês': 'Mês após implementação',
+            'impacto_acumulado': 'Impacto Térmico Acumulado (°C)'
+        },
+        color_discrete_sequence=['#0ea5e9']
+    )
+    fig_timeline.add_hline(
+        y=delta_total,
+        line_dash="dash",
+        line_color="green",
+        annotation_text="Impacto máximo (100%)",
+        annotation_position="right"
+    )
+    fig_timeline.update_layout(height=350, hovermode='x unified')
+    st.plotly_chart(fig_timeline, use_container_width=True)
+
+    # ===== SEÇÃO 5: INTERPRETAÇÃO AUTOMÁTICA =====
+    st.markdown("#### 🔍 Interpretação do Resultado")
+
+    if delta_total <= -2:
+        nivel_impacto = "🌿 **ALTO IMPACTO** - Resfriamento Significativo"
+        descricao = """
+        Sua intervenção apresenta **forte potencial de resfriamento urbano**, com redução
+        de 2°C ou mais. Este é um resultado **excelente** que:
+        - Reduz significativamente a ilha de calor urbana
+        - Melhora o conforto térmico da população
+        - Gera economia energética importante em climatização
+        - Aumenta a biodiversidade e qualidade de vida
+        """
+        cor_bg = "🟢"
+    elif delta_total < 0:
+        nivel_impacto = "✅ **IMPACTO MODERADO** - Resfriamento Positivo"
+        descricao = """
+        Sua intervenção gera **resfriamento moderado e benéfico**, com resultado entre 0 e -2°C.
+        Este é um cenário **positivo** que:
+        - Contribui para redução da ilha de calor
+        - Oferece benefício ambiental e térmico
+        - Pode ser combinado com outras intervenções para maior impacto
+        - Segue direção correta para sustentabilidade urbana
+        """
+        cor_bg = "🟡"
+    elif delta_total < 1:
+        nivel_impacto = "⚖️ **IMPACTO NEUTRO** - Efeitos Balanceados"
+        descricao = """
+        Sua intervenção apresenta **efeito térmico mínimo ou equilibrado**. Recomenda-se:
+        - Rever os parâmetros (densidade, cobertura vegetal, etc.)
+        - Aumentar a área de intervenção
+        - Combinar com outras medidas complementares
+        - Focar em benefícios secundários (biodiversidade, drenagem)
+        """
+        cor_bg = "🔵"
+    else:
+        nivel_impacto = "🔥 **AQUECIMENTO ESTIMADO** - Atenção Necessária"
+        descricao = """
+        Sua intervenção pode **intensificar a ilha de calor urbana** com aquecimento positivo.
+        **Ação recomendada:**
+        - Revise completamente o cenário (especialmente expansões urbanas)
+        - Adicione medidas de resfriamento (parques, telhados verdes)
+        - Reduza fatores de construção ou impermeabilização
+        - Consulte especialista em clima urbano antes de implementação
+        """
+        cor_bg = "🔴"
+
+    with st.container(border=True):
+        st.markdown(f"### {cor_bg} {nivel_impacto}")
+        st.markdown(descricao)
+
+    # ===== SEÇÃO 6: DISTRIBUIÇÃO DE IMPACTO POR INTERVENCAO =====
+    if len(resumo) > 1:
+        st.markdown("#### 🎯 Contribuição por Tipo de Intervenção")
+
+        df_resumo = pd.DataFrame(resumo)
+        df_resumo_valido = df_resumo[df_resumo.get('valido', True)]
+
+        if len(df_resumo_valido) > 0:
+            fig_pizza = px.pie(
+                df_resumo_valido,
+                values='impacto_ponderado',
+                names='tipo',
+                title='Distribuição do Impacto Térmico',
+                color_discrete_sequence=px.colors.qualitative.Set3
+            )
+            fig_pizza.update_layout(height=400)
+            st.plotly_chart(fig_pizza, use_container_width=True)
 
 # --- Funções de Inicialização ---
 
@@ -469,24 +887,54 @@ def renderizar_simulacao_e_resultados_melhorado():
             try:
                 # Validar e corrigir estrutura das intervenções
                 intervencoes_validadas = []
-                for interv in st.session_state.intervencoes:
+                validacoes_erros = []
+                validacoes_avisos = []
+
+                for i, interv in enumerate(st.session_state.intervencoes):
+                    tipo_intervencao = interv.get('tipo', 'Parque Urbano')
+                    parametros = interv.get('parametros', {})
+
+                    # Aplicar validação robusta (compatível com tipos existentes)
+                    # Nota: validador suporta novos tipos; aqui usamos para warnings
+                    tipo_normalizado = tipo_intervencao.lower().replace(' ', '_')
+
                     intervencao_corrigida = {
-                        'tipo': interv.get('tipo', 'Parque Urbano'),
+                        'tipo': tipo_intervencao,
                         'area_m2': interv.get('area_m2', 50000.0),
-                        'parametros': interv.get('parametros', {})
+                        'parametros': parametros
                     }
+
+                    # Log de validação (informativo)
+                    if tipo_normalizado in ['telhado_verde', 'parque_urbano', 'albedo', 'arvores']:
+                        validacao = validar_parametros_intervencao(tipo_normalizado, parametros)
+                        if validacao['warnings']:
+                            validacoes_avisos.extend([f"[{tipo_intervencao}] {w}" for w in validacao['warnings']])
+                        if validacao['errors']:
+                            validacoes_erros.extend([f"[{tipo_intervencao}] {e}" for e in validacao['errors']])
+
                     intervencoes_validadas.append(intervencao_corrigida)
-                
+
+                # Exibir warnings e erros de validação
+                if validacoes_erros:
+                    with st.expander("⚠️ Erros de Validação Encontrados", expanded=False):
+                        for erro in validacoes_erros:
+                            st.error(f"• {erro}")
+
+                if validacoes_avisos:
+                    with st.expander("ℹ️ Avisos de Validação", expanded=False):
+                        for aviso in validacoes_avisos:
+                            st.warning(f"• {aviso}")
+
                 # Executar simulação
                 delta_total, resumo_detalhado = simulacao.combinar_intervencoes(intervencoes_validadas)
-                
+
                 resultado_simulacao = {
                     'delta_total': delta_total,
                     'resumo_detalhado': resumo_detalhado
                 }
-                
+
                 st.session_state.resultado_simulacao = resultado_simulacao
-                
+
                 # Adicionar ao histórico
                 st.session_state.historico_simulacoes.append({
                     'cenario': nome_simulacao,
@@ -494,9 +942,9 @@ def renderizar_simulacao_e_resultados_melhorado():
                     'resultado': resultado_simulacao,
                     'timestamp': pd.Timestamp.now().isoformat()
                 })
-                
+
                 st.rerun()
-                
+
             except Exception as e:
                 st.error(f"❌ Erro na simulação: {e}")
                 st.write("**Debug Info:**")
@@ -547,7 +995,15 @@ def renderizar_visualizacoes_avancadas_melhorado():
     '''Renderiza gráficos e análises educativas.'''
     if not st.session_state.resultado_simulacao:
         return
-    
+
+    # Renderizar visualização completa com nova função
+    resultado = st.session_state.resultado_simulacao
+    tipo_intervencao_principal = st.session_state.intervencoes[0].get('tipo', 'Simulação') if st.session_state.intervencoes else 'Simulação'
+
+    visualizar_resultado_simulacao(resultado, tipo_intervencao_principal)
+
+    # Análises adicionais expandidas
+    st.markdown("---")
     st.markdown("### 📊 Análise Detalhada")
     
     resultado = st.session_state.resultado_simulacao

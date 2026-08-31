@@ -1,85 +1,56 @@
-/*
- * ============================================================
- *  Forest Canopy Theme — Streamlit
- *  Urban Climate Educational Platform (LCZ4r / CLIMASUS4r)
- *
- *  Design system: Nature-Inspired Climate Analysis
- *  Palette: off-white sage · forest green · sky blue · terracotta
- *  Consistent with custom-modern.css (pkgdown / R Markdown)
- * ============================================================
- */
+/* Estilo da Plataforma Clima Urbano — paleta temática de clima urbano (frio/vegetação/calor),
+   alinhada à identidade visual do pacote LCZ4r, em vez de um roxo genérico de SaaS. */
 
-/* ============================================================
-   FONTS
-   ============================================================ */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Source+Serif+4:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Importar fontes do Google */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Libre+Baskerville:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-/* ============================================================
-   DESIGN TOKENS — Forest Canopy
-   ============================================================ */
+/* Variáveis CSS para tema consistente */
 :root {
-  /* Backgrounds */
-  --background-color:    #f8faf7;   /* off-white with green tint */
-  --surface-color:       #ffffff;   /* card / panel surface */
-  --surface-hover:       #f0f4ef;   /* very light sage on hover */
-  --surface-elevated:    #e6ede4;   /* pale sage — elevated elements */
-
-  /* Brand colours */
-  --primary-color:       #10b981;   /* emerald — primary accent */
-  --primary-dark:        #059669;   /* deep forest green */
-  --primary-light:       #d1fae5;   /* mint tint */
-  --secondary-color:     #0ea5e9;   /* sky blue */
-  --secondary-dark:      #0369a1;   /* deep sky blue */
-  --secondary-light:     #e0f2fe;   /* sky tint */
-  --accent-color:        #c2410c;   /* terracotta — heat / urgency */
-
-  /* Semantic colours */
-  --success-color:       #059669;
-  --warning-color:       #d97706;
-  --error-color:         #dc2626;
-  --info-color:          #0369a1;
-
-  /* Text */
-  --text-primary:        #1a2e1a;   /* deep forest */
-  --text-secondary:      #4a6741;   /* medium forest green */
-  --text-muted:          #8aaa82;   /* soft sage */
-
-  /* Borders */
-  --border-color:        rgba(45, 106, 79, 0.14);
-  --border-hover:        rgba(45, 106, 79, 0.28);
-
-  /* Gradients */
-  --background-gradient: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%);
-  --header-gradient:     linear-gradient(135deg, #1a2e1a 0%, #2d6a4f 50%, #0369a1 100%);
-  --subtle-gradient:     linear-gradient(135deg, #f0f4ef 0%, #f8faf7 100%);
-
-  /* Shadows — green-tinted */
-  --shadow-sm:  0 1px 3px rgba(26, 46, 26, 0.07), 0 1px 2px rgba(26, 46, 26, 0.04);
-  --shadow-md:  0 4px 12px rgba(26, 46, 26, 0.08), 0 2px 4px rgba(26, 46, 26, 0.04);
-  --shadow-lg:  0 12px 32px rgba(26, 46, 26, 0.10), 0 4px 8px rgba(26, 46, 26, 0.05);
-  --shadow-xl:  0 20px 48px rgba(26, 46, 26, 0.12), 0 8px 16px rgba(26, 46, 26, 0.06);
-
-  /* Border radius */
+  /* Paleta temática: frio (água/LCZ úmida) -> vegetação -> calor (ilha de calor) */
+  --cold-color: #0ea5e9;
+  --vegetation-color: #16a34a;
+  --warm-color: #10b981;
+  --hot-color: #dc2626;
+  --primary-color: #0f766e;
+  --primary-dark: #115e59;
+  --secondary-color: #0ea5e9;
+  --accent-color: #10b981;
+  --success-color: #16a34a;
+  --warning-color: #ed8936;
+  --error-color: #dc2626;
+  --info-color: #0ea5e9;
+  --background-color: #f7f9f6;
+  --background-gradient: linear-gradient(135deg, #0f766e 0%, #0ea5e9 100%);
+  --thermal-gradient: linear-gradient(90deg, var(--cold-color), var(--vegetation-color), var(--hot-color));
+  --surface-color: #ffffff;
+  --surface-hover: #f0f4ef;
+  --text-primary: #16231a;
+  --text-secondary: #48604a;
+  --text-muted: #8a9d8a;
+  --border-color: rgba(15, 118, 110, 0.18);
+  --border-hover: rgba(14, 165, 233, 0.35);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
   --border-radius-sm: 6px;
-  --border-radius:    12px;
+  --border-radius: 12px;
   --border-radius-lg: 16px;
   --border-radius-xl: 24px;
-
-  /* Transitions */
-  --transition:      all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --font-heading: 'Libre Baskerville', Georgia, serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
-/* ============================================================
-   RESET & BASE
-   ============================================================ */
+/* Reset e configurações globais */
 * {
   box-sizing: border-box;
 }
 
 html {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  line-height: 1.7;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -91,9 +62,7 @@ body {
   padding: 0;
 }
 
-/* ============================================================
-   STREAMLIT MAIN CONTAINER
-   ============================================================ */
+/* Estilo do corpo principal */
 .main .block-container {
   padding-top: 2rem;
   padding-bottom: 2rem;
@@ -101,12 +70,9 @@ body {
   margin: 0 auto;
 }
 
-/* ============================================================
-   SIDEBAR
-   ============================================================ */
-/* Legacy Streamlit class */
+/* Sidebar customizada */
 .css-1d391kg {
-  background: linear-gradient(180deg, var(--surface-color) 0%, var(--surface-hover) 100%);
+  background: linear-gradient(180deg, var(--surface-color) 0%, #f0f4ef 100%);
   border-right: 1px solid var(--border-color);
   box-shadow: var(--shadow-md);
 }
@@ -115,21 +81,9 @@ body {
   padding: 1.5rem 1rem;
 }
 
-/* Modern Streamlit sidebar selector */
-section[data-testid="stSidebar"] {
-  background: linear-gradient(180deg, var(--surface-color) 0%, var(--surface-hover) 100%);
-  border-right: 1px solid var(--border-color);
-}
-
-section[data-testid="stSidebar"] .block-container {
-  padding: 1.5rem 1rem;
-}
-
-/* ============================================================
-   MAIN HEADER — Hero banner
-   ============================================================ */
+/* Headers personalizados com gradientes temáticos */
 .main-header {
-  background: var(--header-gradient);
+  background: var(--background-gradient);
   color: white;
   padding: 3rem 2rem;
   border-radius: var(--border-radius-lg);
@@ -143,40 +97,33 @@ section[data-testid="stSidebar"] .block-container {
 .main-header::before {
   content: '';
   position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: radial-gradient(ellipse at top right, rgba(14,165,233,0.25) 0%, transparent 60%);
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 50%);
   pointer-events: none;
 }
 
-.main-header::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 3px;
-  background: var(--background-gradient);
-}
-
 .main-header h1 {
-  margin: 0 0 0.5rem 0;
-  font-size: clamp(2rem, 5vw, 3rem);
-  font-weight: 800;
-  font-family: 'Source Serif 4', Georgia, serif;
-  text-shadow: 0 2px 8px rgba(0,0,0,0.2);
-  letter-spacing: -0.02em;
+  margin: 0;
+  font-size: 3rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  font-family: var(--font-heading);
+  text-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .main-header .subtitle {
-  font-size: 1.2rem;
-  opacity: 0.92;
+  font-size: 1.3rem;
+  opacity: 0.95;
   margin: 0;
   font-weight: 400;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 
-/* ============================================================
-   MODULE HEADER
-   ============================================================ */
 .module-header {
-  background: var(--header-gradient);
+  background: var(--background-gradient);
   color: white;
   padding: 2rem;
   border-radius: var(--border-radius-lg);
@@ -190,29 +137,31 @@ section[data-testid="stSidebar"] .block-container {
 .module-header::before {
   content: '';
   position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: radial-gradient(ellipse at top left, rgba(16,185,129,0.20) 0%, transparent 60%);
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 50%);
   pointer-events: none;
 }
 
-.module-header h1 {
-  margin: 0 0 0.5rem 0;
-  font-size: clamp(1.5rem, 3vw, 2.5rem);
+.module-header h1, .module-header h2 {
+  margin: 0;
+  font-size: 2.5rem;
   font-weight: 700;
-  font-family: 'Source Serif 4', Georgia, serif;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.15);
+  margin-bottom: 0.5rem;
+  font-family: var(--font-heading);
+  text-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .module-header p {
   margin: 0;
-  opacity: 0.92;
-  font-size: 1.1rem;
+  opacity: 0.95;
+  font-size: 1.2rem;
   font-weight: 400;
 }
 
-/* ============================================================
-   MODULE CARDS
-   ============================================================ */
+/* Cards dos módulos */
 .module-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -232,21 +181,20 @@ section[data-testid="stSidebar"] .block-container {
   overflow: hidden;
 }
 
-/* Left accent stripe */
 .module-card::before {
   content: '';
   position: absolute;
-  top: 0; left: 0;
+  top: 0;
+  left: 0;
   width: 4px;
   height: 100%;
-  background: var(--background-gradient);
+  background: var(--thermal-gradient);
   transform: scaleY(0);
-  transform-origin: bottom;
   transition: var(--transition);
 }
 
 .module-card:hover {
-  transform: translateY(-5px);
+  transform: translateY(-4px);
   box-shadow: var(--shadow-xl);
   border-color: var(--primary-color);
 }
@@ -256,51 +204,49 @@ section[data-testid="stSidebar"] .block-container {
 }
 
 .module-card h4 {
-  color: var(--primary-dark);
-  margin: 0 0 0.75rem 0;
-  font-size: 1.25rem;
-  font-weight: 700;
-  font-family: 'Source Serif 4', Georgia, serif;
+  color: var(--primary-color);
+  margin: 0 0 1rem 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+  font-family: var(--font-heading);
 }
 
 .module-card p {
   color: var(--text-secondary);
   margin: 0;
-  font-size: 0.95rem;
-  line-height: 1.65;
+  font-size: 1rem;
+  line-height: 1.6;
 }
 
-/* ============================================================
-   STREAMLIT BUTTONS
-   ============================================================ */
+/* Botões */
 .stButton > button {
   background: var(--background-gradient);
   color: white;
   border: none;
   border-radius: var(--border-radius);
-  padding: 0.75rem 1.75rem;
+  padding: 0.875rem 2rem;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 1rem;
   transition: var(--transition);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
   position: relative;
   overflow: hidden;
 }
 
-/* Shimmer effect on hover */
 .stButton > button::before {
   content: '';
   position: absolute;
-  top: 0; left: -100%;
+  top: 0;
+  left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
   transition: var(--transition);
 }
 
 .stButton > button:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
 }
 
 .stButton > button:hover::before {
@@ -309,25 +255,9 @@ section[data-testid="stSidebar"] .block-container {
 
 .stButton > button:active {
   transform: translateY(0);
-  box-shadow: var(--shadow-sm);
 }
 
-/* Secondary / outline button */
-.stButton > button[kind="secondary"] {
-  background: transparent;
-  color: var(--primary-dark);
-  border: 1.5px solid var(--primary-color);
-  box-shadow: none;
-}
-
-.stButton > button[kind="secondary"]:hover {
-  background: var(--primary-light);
-  border-color: var(--primary-dark);
-}
-
-/* ============================================================
-   METRICS
-   ============================================================ */
+/* Métricas */
 .metric-container {
   background: var(--surface-color);
   border: 1px solid var(--border-color);
@@ -346,45 +276,19 @@ section[data-testid="stSidebar"] .block-container {
 .metric-container .metric-value {
   font-size: 2rem;
   font-weight: 700;
-  color: var(--primary-dark);
-  font-family: 'Source Serif 4', Georgia, serif;
+  color: var(--primary-color);
+  font-family: var(--font-heading);
 }
 
 .metric-container .metric-label {
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.5px;
 }
 
-/* Streamlit native metric */
-[data-testid="metric-container"] {
-  background: var(--surface-color);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  padding: 1rem 1.25rem;
-  box-shadow: var(--shadow-sm);
-  transition: var(--transition);
-}
-
-[data-testid="metric-container"]:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-}
-
-[data-testid="metric-container"] [data-testid="stMetricValue"] {
-  color: var(--primary-dark);
-  font-weight: 700;
-}
-
-[data-testid="metric-container"] [data-testid="stMetricDelta"] svg {
-  fill: var(--primary-color);
-}
-
-/* ============================================================
-   ALERTS
-   ============================================================ */
+/* Alertas */
 .stAlert {
   border-radius: var(--border-radius);
   border: none;
@@ -392,63 +296,45 @@ section[data-testid="stSidebar"] .block-container {
   font-weight: 500;
 }
 
-/* Success */
-.stSuccess,
-div[data-baseweb="notification"][kind="positive"] {
-  background: linear-gradient(135deg, #d1fae5, #a7f3d0);
-  color: #064e3b;
-  border-left: 4px solid var(--success-color);
-  border-radius: var(--border-radius);
+.stSuccess {
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  color: white;
+  border-left: 4px solid #166534;
 }
 
-/* Error */
-.stError,
-div[data-baseweb="notification"][kind="negative"] {
-  background: linear-gradient(135deg, #fee2e2, #fecaca);
-  color: #7f1d1d;
-  border-left: 4px solid var(--error-color);
-  border-radius: var(--border-radius);
+.stError {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  color: white;
+  border-left: 4px solid #991b1b;
 }
 
-/* Warning */
-.stWarning,
-div[data-baseweb="notification"][kind="warning"] {
-  background: linear-gradient(135deg, #fef3c7, #fde68a);
-  color: #78350f;
-  border-left: 4px solid var(--warning-color);
-  border-radius: var(--border-radius);
+.stWarning {
+  background: linear-gradient(135deg, #ed8936, #dd6b20);
+  color: white;
+  border-left: 4px solid #c05621;
 }
 
-/* Info */
-.stInfo,
-div[data-baseweb="notification"][kind="info"] {
-  background: linear-gradient(135deg, #e0f2fe, #bae6fd);
-  color: #0c4a6e;
-  border-left: 4px solid var(--info-color);
-  border-radius: var(--border-radius);
+.stInfo {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  color: white;
+  border-left: 4px solid #0369a1;
 }
 
-/* ============================================================
-   EXPANDERS
-   ============================================================ */
+/* Expanders */
 .streamlit-expanderHeader {
   background: var(--surface-color);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   font-weight: 600;
-  color: var(--text-primary);
   transition: var(--transition);
 }
 
 .streamlit-expanderHeader:hover {
   background: var(--surface-hover);
   border-color: var(--border-hover);
-  color: var(--primary-dark);
 }
 
-/* ============================================================
-   DATA TABLES
-   ============================================================ */
+/* Tabelas */
 .stDataFrame {
   border-radius: var(--border-radius);
   overflow: hidden;
@@ -457,27 +343,16 @@ div[data-baseweb="notification"][kind="info"] {
 }
 
 .stDataFrame table {
-  font-size: 0.88rem;
-  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
 }
 
 .stDataFrame th {
-  background: var(--surface-elevated);
-  color: var(--text-secondary);
-  font-weight: 700;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  border-bottom: 2px solid var(--border-hover);
+  background: var(--background-gradient);
+  color: white;
+  font-weight: 600;
 }
 
-.stDataFrame tr:hover td {
-  background: var(--surface-hover);
-}
-
-/* ============================================================
-   FILE UPLOADER
-   ============================================================ */
+/* Upload de arquivos */
 .stFileUploader {
   border: 2px dashed var(--border-color);
   border-radius: var(--border-radius-lg);
@@ -489,40 +364,26 @@ div[data-baseweb="notification"][kind="info"] {
 
 .stFileUploader:hover {
   border-color: var(--primary-color);
-  background: rgba(16, 185, 129, 0.04);
+  background: var(--surface-hover);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
 
-/* ============================================================
-   INPUTS — Selectbox, TextInput, NumberInput
-   ============================================================ */
+/* Selectbox e inputs */
 .stSelectbox > div > div,
-.stTextInput > div > div,
-.stNumberInput > div > div {
+.stTextInput > div > div {
   border-radius: var(--border-radius);
   border-color: var(--border-color);
-  background: var(--surface-color);
   transition: var(--transition-fast);
 }
 
 .stSelectbox > div > div:focus-within,
-.stTextInput > div > div:focus-within,
-.stNumberInput > div > div:focus-within {
+.stTextInput > div > div:focus-within {
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
 }
 
-/* Slider */
-.stSlider [data-baseweb="slider"] [data-testid="stThumbValue"] {
-  background: var(--primary-color);
-  color: white;
-  border-radius: 100px;
-}
-
-/* ============================================================
-   CHECKBOX & RADIO
-   ============================================================ */
+/* Checkbox */
 .stCheckbox {
   margin: 0.75rem 0;
 }
@@ -532,40 +393,9 @@ div[data-baseweb="notification"][kind="info"] {
   color: var(--text-primary);
 }
 
-.stRadio > div {
-  gap: 0.5rem;
-}
-
-.stRadio > div > label {
-  background: var(--surface-color);
-  border: 1.5px solid var(--border-color);
-  border-radius: var(--border-radius);
-  padding: 0.75rem 1rem;
-  margin: 0.2rem 0;
-  transition: var(--transition);
-  cursor: pointer;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.stRadio > div > label:hover {
-  background: var(--surface-hover);
-  border-color: var(--primary-color);
-  color: var(--primary-dark);
-}
-
-.stRadio > div > label[data-checked="true"] {
-  background: var(--primary-light);
-  color: var(--primary-dark);
-  border-color: var(--primary-color);
-  font-weight: 600;
-}
-
-/* ============================================================
-   TABS
-   ============================================================ */
+/* Tabs */
 .stTabs [data-baseweb="tab-list"] {
-  gap: 8px;
+  gap: 12px;
   border-bottom: 2px solid var(--border-color);
 }
 
@@ -574,181 +404,84 @@ div[data-baseweb="notification"][kind="info"] {
   border-radius: var(--border-radius) var(--border-radius) 0 0;
   border: 1px solid var(--border-color);
   border-bottom: none;
-  padding: 0.75rem 1.25rem;
+  padding: 1rem 1.5rem;
   font-weight: 600;
-  font-size: 0.88rem;
-  color: var(--text-secondary);
   transition: var(--transition);
+  position: relative;
 }
 
 .stTabs [data-baseweb="tab"]:hover {
   background: var(--surface-hover);
-  color: var(--primary-dark);
 }
 
 .stTabs [aria-selected="true"] {
   background: var(--surface-color);
-  color: var(--primary-dark);
+  color: var(--primary-color);
   border-color: var(--primary-color);
   border-bottom: 2px solid var(--surface-color);
   margin-bottom: -2px;
 }
 
-/* ============================================================
-   PLOTLY CHARTS
-   ============================================================ */
+/* Gráficos Plotly — sem overflow:hidden para não cortar controles/tooltips */
 .js-plotly-plot {
   border-radius: var(--border-radius-lg);
   box-shadow: var(--shadow-md);
-  overflow: hidden;
   border: 1px solid var(--border-color);
 }
 
-/* ============================================================
-   FOLIUM MAPS
-   ============================================================ */
+/* Mapas Folium — idem: overflow:hidden cortava os controles de zoom */
 .folium-map {
   border-radius: var(--border-radius-lg);
-  overflow: hidden;
   box-shadow: var(--shadow-lg);
   border: 1px solid var(--border-color);
 }
 
-/* ============================================================
-   STATUS INDICATORS
-   ============================================================ */
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
+/* Radio buttons */
+.stRadio > div {
   gap: 0.5rem;
-  padding: 0.4rem 0.9rem;
-  border-radius: 100px;
-  font-weight: 600;
-  font-size: 0.82rem;
-  letter-spacing: 0.02em;
 }
 
-.status-success {
-  background: var(--primary-light);
-  color: #064e3b;
-  border: 1px solid rgba(16, 185, 129, 0.25);
-}
-
-.status-warning {
-  background: #fef3c7;
-  color: #78350f;
-  border: 1px solid rgba(217, 119, 6, 0.25);
-}
-
-.status-info {
-  background: var(--secondary-light);
-  color: #0c4a6e;
-  border: 1px solid rgba(14, 165, 233, 0.25);
-}
-
-.status-error {
-  background: #fee2e2;
-  color: #7f1d1d;
-  border: 1px solid rgba(220, 38, 38, 0.25);
-}
-
-/* ============================================================
-   GLASSMORPHISM — frosted light panels
-   ============================================================ */
-.glass-effect {
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(16, 185, 129, 0.18);
-  box-shadow: 0 8px 32px rgba(26, 46, 26, 0.10);
-  border-radius: var(--border-radius-lg);
-}
-
-/* ============================================================
-   LOADING SHIMMER
-   ============================================================ */
-.loading-shimmer {
-  background: linear-gradient(90deg, var(--surface-hover) 25%, var(--surface-elevated) 50%, var(--surface-hover) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.8s infinite;
+.stRadio > div > label {
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
+  padding: 0.75rem 1rem;
+  margin: 0.25rem 0;
+  transition: var(--transition);
+  cursor: pointer;
+  font-weight: 500;
 }
 
-@keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
+.stRadio > div > label:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-hover);
 }
 
-/* ============================================================
-   SCROLLBAR
-   ============================================================ */
-::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
+.stRadio > div > label[data-checked="true"] {
+  background: var(--background-gradient);
+  color: white;
+  border-color: var(--primary-color);
 }
 
-::-webkit-scrollbar-track {
-  background: var(--background-color);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, var(--primary-color), var(--secondary-color));
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, var(--primary-dark), var(--secondary-dark));
-}
-
-/* ============================================================
-   ANIMATIONS
-   ============================================================ */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(28px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes slideInLeft {
-  from { opacity: 0; transform: translateX(-28px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50%       { transform: scale(1.04); }
-}
-
-.fade-in        { animation: fadeIn      0.55s ease-out both; }
-.fade-in-up     { animation: fadeInUp    0.60s ease-out both; }
-.slide-in-left  { animation: slideInLeft 0.55s ease-out both; }
-.pulse-hover:hover { animation: pulse 0.55s ease-in-out; }
-
-/* ============================================================
-   RESPONSIVE
-   ============================================================ */
+/* Responsividade */
 @media (max-width: 768px) {
-  .main-header {
-    padding: 2rem 1.25rem;
-  }
   .main-header h1 {
-    font-size: 2rem;
+    font-size: 2.5rem;
   }
+
   .main-header .subtitle {
-    font-size: 1rem;
+    font-size: 1.1rem;
   }
-  .module-header h1 {
-    font-size: 1.6rem;
-  }
+
   .module-cards {
     grid-template-columns: 1fr;
     gap: 1rem;
   }
+
+  .module-header h1, .module-header h2 {
+    font-size: 2rem;
+  }
+
   .main .block-container {
     padding-top: 1rem;
     padding-bottom: 1rem;
@@ -757,34 +490,142 @@ div[data-baseweb="notification"][kind="info"] {
 
 @media (max-width: 480px) {
   .main-header {
-    padding: 1.5rem 1rem;
-    border-radius: var(--border-radius);
+    padding: 2rem 1rem;
   }
+
   .module-header {
-    padding: 1.25rem 1rem;
-    border-radius: var(--border-radius);
+    padding: 1.5rem 1rem;
   }
+
   .module-card {
-    padding: 1.25rem;
-  }
-  .stButton > button {
-    padding: 0.65rem 1.25rem;
-    font-size: 0.88rem;
+    padding: 1.5rem;
   }
 }
 
-/* ============================================================
-   ACCESSIBILITY
-   ============================================================ */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+/* Animações */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 3px;
-  border-radius: 3px;
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.slide-in-left {
+  animation: slideInLeft 0.6s ease-out;
+}
+
+.pulse-hover:hover {
+  animation: pulse 0.6s ease-in-out;
+}
+
+/* Scrollbar personalizada */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--background-gradient);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, var(--primary-dark), var(--secondary-color));
+}
+
+/* Loading states */
+.loading-shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Status indicators */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius);
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.status-success {
+  background: rgba(22, 163, 74, 0.1);
+  color: var(--success-color);
+  border: 1px solid rgba(22, 163, 74, 0.2);
+}
+
+.status-warning {
+  background: rgba(237, 137, 54, 0.1);
+  color: var(--warning-color);
+  border: 1px solid rgba(237, 137, 54, 0.2);
+}
+
+.status-info {
+  background: rgba(14, 165, 233, 0.1);
+  color: var(--info-color);
+  border: 1px solid rgba(14, 165, 233, 0.2);
+}
+
+/* Glassmorphism (usado no menu principal) */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 32px 0 rgba(15, 118, 110, 0.25);
+}
+
+/* Dark mode (suporte futuro) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-color: #12201a;
+    --surface-color: #1c2e26;
+    --text-primary: #f0f5f0;
+    --text-secondary: #cdd9cd;
+    --border-color: rgba(255, 255, 255, 0.12);
+  }
 }

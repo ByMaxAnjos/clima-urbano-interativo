@@ -6,6 +6,7 @@ import folium
 from folium.plugins import Draw
 import pandas as pd
 from utils import processamento
+from utils.navegacao import ir_para
 
 def renderizar_pagina():
     """Renderiza a página do módulo Investigar."""
@@ -49,7 +50,10 @@ def renderizar_pagina():
         arquivo_csv = st.file_uploader(
             "Selecione um arquivo .csv com seus dados de campo:",
             type="csv",
-            help="O arquivo deve conter colunas de latitude, longitude e valores medidos"
+            help="O arquivo deve conter colunas de latitude, longitude e valores medidos. "
+                 "O horário e as condições meteorológicas da coleta afetam fortemente os "
+                 "resultados — meça em condições comparáveis (mesmo período do dia, sem "
+                 "chuva/vento forte) para poder comparar os pontos entre si."
         )
 
         if arquivo_csv:
@@ -193,19 +197,15 @@ def renderizar_pagina():
             disabled=not pode_analisar,
             use_container_width=True
         ):
-            with st.spinner("Executando análise..."):
-                # Simular processamento
-                import time
-                time.sleep(1)
-                
-                st.session_state['analise_pronta'] = True
-                st.success("✅ Análise concluída!")
-                st.info("Vá para o módulo **Visualizar** para ver os resultados detalhados.")
-                
-                # Opção de ir direto para visualizar
-                if st.button("📊 Ir para Visualizar", use_container_width=True):
-                    st.session_state.navigation = "Visualizar"
-                    st.rerun()
+            st.session_state['analise_pronta'] = True
+            st.success("✅ Dados e área preparados!")
+            st.info(
+                "O cruzamento dos pontos com as Zonas Climáticas Locais acontece no "
+                "módulo **Visualizar** — vá até lá para ver os resultados detalhados."
+            )
+
+            if st.button("📊 Ir para Visualizar", use_container_width=True):
+                ir_para("Visualizar")
 
         # Seção de ajuda
         st.markdown("---")

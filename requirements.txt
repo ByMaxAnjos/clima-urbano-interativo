@@ -1,5 +1,6 @@
 streamlit>=1.49.1
 pandas>=2.0.0
+numpy>=1.26.0
 geopandas>=1.0.0
 folium>=0.20.0
 streamlit-folium>=0.25.0
@@ -7,10 +8,13 @@ plotly>=5.0.0
 shapely>=2.0.0
 branca>=0.8.0
 streamlit-option-menu>=0.3.12
-scipy>=1.10.0
-kaleido>=0.2.1
-# Dependências para LCZ4r
-osmnx
-matplotlib
+urllib3
+# Dependências para LCZ4r/LCZ4py
 rasterio
 requests
+# LCZ4py não está publicado no PyPI ainda — instale em modo editável a partir do
+# repositório local: pip install -e /caminho/para/lcz4r_python
+# (traz como dependências: polars, pyarrow, scipy, httpx, aiohttp, rioxarray,
+# tenacity, diskcache, kaleido, nest_asyncio, matplotlib, entre outras — ver
+# seu pyproject.toml. Não precisamos mais listar matplotlib diretamente: a
+# plataforma não o importa mais, só o LCZ4py o usa internamente.)

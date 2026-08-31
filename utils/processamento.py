@@ -4,6 +4,7 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Point, Polygon
 import streamlit as st
+import numpy as np
 
 def carregar_dados_base(caminho_zcl, caminho_temp):
     """Carrega os arquivos GeoJSON base em GeoDataFrames."""
@@ -59,10 +60,9 @@ def validar_e_processar_csv(arquivo_carregado):
         gdf_pontos = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
         
         linhas_removidas = df_original_len - len(df)
-        mensagem_sucesso = f"{len(gdf_pontos)} pontos carregados com sucesso!"
         if linhas_removidas > 0:
-            mensagem_sucesso += f" ({linhas_removidas} linhas com dados inválidos foram removidas)"
-            
+            st.warning(f"⚠️ {linhas_removidas} linha(s) com dados inválidos foram removidas do arquivo.")
+
         return gdf_pontos, None
         
     except Exception as e:
@@ -113,8 +113,10 @@ def calcular_estatisticas_area(gdf_zcl_filtrado):
         return {}
     
     try:
-        # Calcula a área em um CRS projetado para obter valores em m²
-        gdf_proj = gdf_zcl_filtrado.to_crs(epsg=32723)  # UTM Zone 23S para São Paulo
+        # Calcula a área em um CRS UTM estimado a partir dos dados (funciona para qualquer região,
+        # não apenas São Paulo)
+        crs_utm = gdf_zcl_filtrado.estimate_utm_crs()
+        gdf_proj = gdf_zcl_filtrado.to_crs(crs_utm)
         gdf_proj['area_m2'] = gdf_proj.geometry.area
         
         # Agrupa por classe de ZCL
@@ -129,4 +131,3 @@ def calcular_estatisticas_area(gdf_zcl_filtrado):
     except Exception as e:
         st.error(f"Erro ao calcular estatísticas: {e}")
         return {}
-

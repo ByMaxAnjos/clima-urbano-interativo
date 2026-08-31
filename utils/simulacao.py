@@ -10,8 +10,11 @@ e funcionalidades educativas.
 import numpy as np
 import pandas as pd
 
-# --- COEFICIENTES BASEADOS EM LITERATURA CIENTÍFICA ---
-# Valores calibrados com base em estudos de ilha de calor urbana
+# --- MODELO DIDÁTICO SIMPLIFICADO ---
+# Ordens de grandeza inspiradas em estudos publicados (citados em cada fórmula),
+# mas não validadas estatisticamente para esta plataforma. Os resultados servem
+# para discutir tendências (esfria/aquece, mais/menos), não como previsão
+# quantitativa precisa — não há distinção de horário, estação ou clima de fundo.
 
 # Fatores de impacto por unidade de área (°C por km²)
 FATORES_BASE = {
@@ -124,14 +127,26 @@ def validar_parametros(tipo, parametros, area_m2):
 # --- FUNÇÕES DE CÁLCULO MELHORADAS ---
 
 def _calcular_impacto_parque(area_m2, densidade):
-    '''Calcula o ΔT para um parque urbano com efeito não-linear.'''
+    '''
+    Calcula o ΔT para um parque urbano com efeito de saturação por área.
+
+    Bowler et al. (2010) mostram que mesmo parques pequenos (escala de
+    quintal/pátio escolar) já produzem resfriamento perceptível, com o efeito
+    crescendo rápido em áreas pequenas e depois saturando em áreas grandes —
+    não crescendo linearmente sem limite. A versão anterior multiplicava o
+    fator de área duas vezes (uma no fator de "eficiência", outra direto),
+    fazendo um pátio de 0,5 ha retornar ΔT ≈ -0,01°C — na prática ensinando
+    que arborizar o pátio da escola não tem efeito nenhum.
+    '''
     area_km2 = area_m2 * FATOR_AREA
-    
-    # Efeito não-linear: parques maiores têm maior eficiência
-    fator_eficiencia = min(1.0, 0.5 + (area_km2 * 0.5))  # Limite de eficiência
-    
-    impacto = FATORES_BASE["parque_urbano"] * area_km2 * densidade * fator_eficiencia
-    
+
+    # Escala de referência: 1 ha (0.01 km²) já captura boa parte do efeito de
+    # resfriamento de um parque pequeno; áreas maiores saturam perto do teto.
+    area_referencia_km2 = 0.01
+    fator_saturacao = 1.0 - np.exp(-area_km2 / area_referencia_km2)
+
+    impacto = FATORES_BASE["parque_urbano"] * densidade * fator_saturacao
+
     # Limitar efeito máximo realisticamente
     return max(impacto, -5.0)  # Máximo de 5°C de resfriamento
 

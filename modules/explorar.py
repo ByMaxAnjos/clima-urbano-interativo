@@ -6,10 +6,7 @@ from streamlit_folium import st_folium
 import geopandas as gpd
 import pandas as pd
 import os
-import matplotlib.pyplot as plt
-import matplotlib
 import base64
-from io import BytesIO
 import tempfile
 import rasterio
 import plotly.express as px
@@ -17,14 +14,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import json
 import time
-import streamlit as st
-import pandas as pd
-import geopandas as gpd
 from utils.lcz4r import lcz_get_map, process_lcz_map, enhance_lcz_data, lcz_plot_map
-from utils.ui_components_modern import design4_glassmorphism_premium
-
-# Configurar matplotlib para usar backend não-interativo
-matplotlib.use('Agg')
 
 def init_session_state():
     """
@@ -116,7 +106,7 @@ def clear_lcz_session_data():
     """
     # Lista de chaves a serem limpas
     keys_to_clear = [
-        'lcz_data', 'lcz_raster_data', 'lcz_raster_profile',
+        'lcz_data', 'lcz_raster_data', 'lcz_raster_profile', 'lcz_raster_path',
         'lcz_city_name', 'lcz_processing_success', 'lcz_success_message',
         'lcz_error_message', 'lcz_last_update', 'lcz_data_size_mb',
         'lcz_area_stats', 'lcz_plot_data', 'lcz_validation_result'
@@ -171,10 +161,10 @@ def update_session_timestamp():
     st.session_state.lcz_last_update = datetime.now().isoformat()
 
 
-def save_lcz_data_to_session(data, profile, city_name, enhanced_gdf):
+def save_lcz_data_to_session(data, profile, city_name, enhanced_gdf, raster_path=None):
     """
     Salva dados LCZ na sessão de forma segura e organizada.
-    
+
     Parameters
     ----------
     data : numpy.ndarray
@@ -185,6 +175,9 @@ def save_lcz_data_to_session(data, profile, city_name, enhanced_gdf):
         Nome da cidade
     enhanced_gdf : geopandas.GeoDataFrame
         Dados vetoriais aprimorados
+    raster_path : str, optional
+        Caminho do GeoTIFF recortado salvo em disco (usado por lcz_cal_area
+        para estatísticas de área diretamente do raster)
     """
     try:
         # Salvar dados principais
@@ -192,6 +185,7 @@ def save_lcz_data_to_session(data, profile, city_name, enhanced_gdf):
         st.session_state.lcz_raster_profile = profile
         st.session_state.lcz_city_name = city_name
         st.session_state.lcz_data = enhanced_gdf
+        st.session_state.lcz_raster_path = raster_path
         
         # Atualizar status
         st.session_state.lcz_processing_success = True
@@ -252,6 +246,8 @@ def renderizar_pagina():
         # Seções condicionais baseadas na disponibilidade de dados
         if st.session_state.lcz_data is not None:
             renderizar_secoes_analise()
+        else:
+            renderizar_instrucoes_iniciais()
         
         # Seção de informações e ajuda
         renderizar_secao_ajuda()
@@ -289,21 +285,12 @@ Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}
 
 def renderizar_cabecalho_modulo():
     """Renderiza o cabeçalho visual do módulo."""
-    
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                padding: 2rem; border-radius: 15px; margin-bottom: 2rem; text-align: center;">
-        <div style="display: flex; align-items: center; justify-content: center; gap: 1rem;">
-            <img src="data:image/png;base64,{}" width="80" style="border-radius: 10px;">
-            <div>
-                <h1 style="color: white; margin: 0; font-size: 2.5rem;">🌍 Módulo Explorar</h1>
-                <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 1.2rem;">
-                    Gere e visualize mapas de Zonas Climáticas Locais (LCZ) interativos
-                </p>
-            </div>
-        </div>
-    </div>
-    """.format(get_logo_base64()), unsafe_allow_html=True)
+    from utils.ui import renderizar_cabecalho_modulo as _renderizar_header
+    _renderizar_header(
+        "🌍 Módulo Explorar",
+        "Gere e visualize mapas de Zonas Climáticas Locais (LCZ) interativos",
+        logo_base64=get_logo_base64()
+    )
 
 
 def renderizar_feedback_usuario():
@@ -378,15 +365,15 @@ def renderizar_secoes_analise():
     """Renderiza as seções de análise quando há dados disponíveis."""
     
     try:
-        # 1. Visualização com matplotlib
+        # 1. Visualização interativa (Plotly)
         st.markdown("---")
         st.markdown("## 🎨 Visualizar LCZ Map")
         
         try:
-            renderizar_secao_matplotlib()
+            renderizar_secao_visualizacao()
         except Exception as e:
-            st.error(f"❌ Erro na visualização matplotlib: {str(e)}")
-            if st.button("🔄 Tentar Novamente - Matplotlib"):
+            st.error(f"❌ Erro na visualização: {str(e)}")
+            if st.button("🔄 Tentar Novamente - Visualização"):
                 st.rerun()
         
         # 2. Análise de área
@@ -420,6 +407,38 @@ def renderizar_secoes_analise():
         st.error(f"❌ Erro nas seções de análise: {str(e)}")
 
 
+def renderizar_instrucoes_iniciais():
+    """Renderiza instruções quando não há dados carregados."""
+    
+    st.info("ℹ️ **Bem-vindo ao Módulo Explorar!** Gere um mapa LCZ primeiro para acessar todas as funcionalidades.")
+    
+    with st.expander("📖 Guia Rápido de Uso", expanded=True):
+        st.markdown("""
+        ### 🚀 Primeiros Passos
+        
+        1. **Digite o nome de uma cidade** no campo acima
+        2. **Clique em "Gerar Mapa LCZ"** para processar os dados
+        3. **Aguarde o processamento** (pode levar alguns minutos)
+        4. **Explore as visualizações** que aparecerão automaticamente
+        
+        ### 💡 Dicas Importantes
+        
+        - **Nomes de cidades:** Use nomes completos como "São Paulo, Brazil" ou "New York, USA"
+        - **Conexão:** Certifique-se de ter uma conexão estável com a internet
+        - **Paciência:** O processamento pode levar 2-5 minutos dependendo do tamanho da cidade
+        - **Memória:** Cidades muito grandes podem usar mais memória
+        
+        ### 🌍 Exemplos de Cidades Testadas
+        
+        - São Paulo, Brazil
+        - Rio de Janeiro, Brazil
+        - New York, USA
+        - London, UK
+        - Tokyo, Japan
+        - Paris, France
+        """)
+
+
 def renderizar_secao_ajuda():
     """Renderiza seção de ajuda e instruções finais."""
     
@@ -432,7 +451,7 @@ def renderizar_secao_ajuda():
         ### 💡 Como Usar o Módulo Explorar
         
         1. **🚀 Gere um Mapa:** Use o gerador LCZ4r para criar um mapa para sua cidade de interesse
-        2. **🎨 Visualize:** Veja o mapa em formato científico com matplotlib
+        2. **🎨 Visualize:** Veja o mapa em um gráfico interativo (zoom/pan) com legenda de classes
         3. **📊 Analise:** Explore a distribuição de áreas por classe LCZ com gráficos interativos
         4. **🗺️ Explore:** Interaja com o mapa usando a interface Folium
         5. **➡️ Próximo passo:** Vá para "Investigar" para análises detalhadas ou "Simular" para testar intervenções
@@ -567,7 +586,7 @@ def processar_mapa_lcz(cidade_nome):
         # Importar exceções personalizadas
         from utils.lcz4r import GeocodeError, DataProcessingError
         
-        data, profile = lcz_get_map(cidade_nome)
+        data, profile, cached_raster_path = lcz_get_map(cidade_nome, isave_map=True, return_path=True)
         
         # Etapa 4: Processamento vetorial
         status_text.text("⚙️ Processando dados LCZ...")
@@ -595,8 +614,10 @@ def processar_mapa_lcz(cidade_nome):
         status_text.text("💾 Salvando na sessão...")
         progress_bar.progress(95)
         
-        # Usar função aprimorada de salvamento
-        success = save_lcz_data_to_session(data, profile, cidade_nome, enhanced_gdf)
+        # Usar função aprimorada de salvamento — usa o caminho em cache do LCZ4py
+        # (chaveado por conteúdo da área, seguro para cidades/usuários concorrentes),
+        # não o arquivo fixo de isave_map (que é sobrescrito a cada geração)
+        success = save_lcz_data_to_session(data, profile, cidade_nome, enhanced_gdf, raster_path=cached_raster_path)
         
         if not success:
             raise Exception("Falha ao salvar dados na sessão")
@@ -704,89 +725,77 @@ def processar_mapa_lcz(cidade_nome):
         if 'status_text' in locals():
             status_text.empty()
 
-def renderizar_secao_matplotlib():
-    """Renderiza a seção de visualização com matplotlib."""
-    
+def renderizar_secao_visualizacao():
+    """Renderiza a seção de visualização interativa (Plotly, via LCZ4py)."""
+
     st.markdown("### ⚙️ Configurações de Visualização")
-    
+
     col1, col2 = st.columns([2, 1])
-    
+
     with col1:
         titulo_personalizado = st.text_input(
             "🏷️ Título do Mapa (opcional):",
             placeholder=f"Ex: Zonas Climáticas Locais - {st.session_state.lcz_city_name or 'Cidade'}",
             help="Deixe em branco para usar o título padrão"
         )
-    
+
     with col2:
         alta_resolucao = st.checkbox(
-            "📸 Alta Resolução",
+            "📸 Exportação em Alta Resolução",
             value=True,
-            help="Gera imagem em 300 DPI para melhor qualidade"
+            help="Usa dimensões maiores ao gerar o PNG para download (o mapa na tela é sempre interativo)"
         )
-    
+
     # Botão para gerar visualização
     if st.button("🎨 Gerar Visualização", type="primary", use_container_width=True):
-        gerar_visualizacao_matplotlib(titulo_personalizado, alta_resolucao)
+        gerar_visualizacao_interativa(titulo_personalizado, alta_resolucao)
 
-def gerar_visualizacao_matplotlib(titulo_personalizado=None, alta_resolucao=True):
-    """Gera visualização usando matplotlib e lcz_plot_map."""
-    
-    with st.spinner("Gerando visualização de alta qualidade..."):
+def gerar_visualizacao_interativa(titulo_personalizado=None, alta_resolucao=True):
+    """Gera visualização interativa (Plotly/WebGL) usando lcz_plot_map do LCZ4py."""
+
+    with st.spinner("Gerando visualização interativa..."):
         try:
             # Usar dados da sessão
             data = st.session_state.lcz_raster_data
             profile = st.session_state.lcz_raster_profile
-            
+
             if data is None or profile is None:
                 st.error("❌ Dados raster não encontrados na sessão. Gere um mapa primeiro.")
                 return
-            
-            # Configurar parâmetros
-            figsize = (16, 12) if alta_resolucao else (12, 8)
-            dpi = 300 if alta_resolucao else 150
-            
+
             # Configurar título
             cidade = st.session_state.lcz_city_name or "Cidade"
             titulo = titulo_personalizado if titulo_personalizado else f"Mapa de Zonas Climáticas Locais - {cidade}"
-            
-            # Gerar visualização usando lcz_plot_map
-            plt.figure(figsize=figsize, dpi=dpi)
-            fig = lcz_plot_map(
+
+            # Gerar visualização usando lcz_plot_map (retorna uma figura Plotly)
+            resultado = lcz_plot_map(
                 (data, profile),
                 title=titulo,
                 show_legend=True,
-                isave=False  # Não salvar automaticamente
+                isave=False
             )
-            
-            # Salvar em buffer para exibição
-            buf = BytesIO()
-            plt.savefig(buf, format='png', dpi=dpi, bbox_inches='tight', 
-                       facecolor='white', edgecolor='none')
-            buf.seek(0)
-            
-            # Exibir a imagem
+            fig = resultado.fig
+
+            # Exibir o gráfico interativo (zoom/pan reais, ao contrário do PNG estático anterior)
             st.markdown("#### 🖼️ Visualização Gerada")
-            st.image(buf, caption=titulo, use_container_width=True)
-            
-            # Preparar dados para download
-            buf.seek(0)
-            png_data = buf.getvalue()
-            
+            st.plotly_chart(fig, use_container_width=True)
+
             # Botões de download
             col1, col2 = st.columns(2)
-            
+
             with col1:
-                # Download da imagem PNG
+                # Exportar como PNG (via kaleido) para quem precisa de uma imagem estática
+                escala = 3 if alta_resolucao else 1
+                png_data = fig.to_image(format="png", scale=escala)
                 st.download_button(
                     label="📸 Baixar Imagem PNG",
                     data=png_data,
                     file_name=f"lcz_map_{st.session_state.lcz_city_name or 'cidade'}.png",
                     mime="image/png",
-                    help="Imagem do mapa LCZ em alta resolução",
+                    help="Imagem estática do mapa LCZ para documentos/apresentações",
                     use_container_width=True
                 )
-            
+
             with col2:
                 # Download do GeoJSON
                 if st.session_state.lcz_data is not None:
@@ -799,10 +808,9 @@ def gerar_visualizacao_matplotlib(titulo_personalizado=None, alta_resolucao=True
                         help="Dados vetoriais do mapa LCZ",
                         use_container_width=True
                     )
-            
-            plt.close(fig)  # Liberar memória
+
             st.success("✅ Visualização gerada com sucesso!")
-            
+
         except Exception as e:
             st.error(f"❌ Erro ao gerar visualização: {str(e)}")
 
@@ -821,7 +829,10 @@ def renderizar_secao_calculo_area():
         if st.session_state.lcz_area_stats is None or st.session_state.lcz_plot_data is None:
             with st.spinner("Calculando estatísticas de área..."):
                 from utils.lcz4r import lcz_cal_area
-                result = lcz_cal_area(st.session_state.lcz_data)
+                result = lcz_cal_area(
+                    st.session_state.lcz_data,
+                    raster_path=st.session_state.get('lcz_raster_path')
+                )
                 st.session_state.lcz_area_stats = result['stats']
                 st.session_state.lcz_plot_data = result['plot_data']
                 st.session_state.lcz_area_summary = result['summary']
@@ -1023,25 +1034,26 @@ def gerar_analise_area_completa(area_stats, plot_data, summary, tipo_grafico, mo
             area_natural = area_stats[natural_mask]['area_total_km2'].sum()
             
             st.metric(
-                "Área Urbana (LCZ 1-10)",
+                "Área com Tipos Construídos (LCZ 1-10)",
                 f"{area_urbana:.1f} km²",
                 f"{(area_urbana/summary['total_area_km2']*100):.1f}%"
             )
-            
+
             st.metric(
-                "Área Natural (LCZ A-G)",
+                "Área com Tipos de Cobertura de Terreno (LCZ A-G)",
                 f"{area_natural:.1f} km²",
-                f"{(area_natural/summary['total_area_km2']*100):.1f}%"
+                f"{(area_natural/summary['total_area_km2']*100):.1f}%",
+                help="Inclui vegetação (A-D), mas também solo exposto, pavimento e água (E-G) — nem tudo aqui é 'natureza'."
             )
-        
+
         with col2:
             # Fragmentação e densidade
             fragmentacao = summary['num_total_poligonos'] / summary['total_area_km2']
-            
+
             st.metric(
-                "Fragmentação",
+                "Densidade de Polígonos",
                 f"{fragmentacao:.2f} pol/km²",
-                help="Número de polígonos por km² (maior = mais fragmentado)"
+                help="Número de polígonos por km² no mapa vetorizado. Reflete principalmente a resolução da grade LCZ (~100 m), não necessariamente a fragmentação real da paisagem — use com cautela para conclusões sobre conectividade urbana."
             )
             
             # Classe mais fragmentada
@@ -1049,7 +1061,7 @@ def gerar_analise_area_completa(area_stats, plot_data, summary, tipo_grafico, mo
             classe_fragmentada = area_stats.loc[area_stats['fragmentacao'].idxmax(), 'zcl_classe']
             
             st.metric(
-                "Classe Mais Fragmentada",
+                "Classe com Maior Densidade de Polígonos",
                 classe_fragmentada,
                 f"{area_stats['fragmentacao'].max():.2f} pol/km²"
             )
@@ -1312,8 +1324,14 @@ def renderizar_mapa_folium():
                         <p style='font-size: 12px;'>{row.get('efeito_temp', 'Não disponível')}</p>
                         <p><b>🏙️ Ilha de Calor:</b></p>
                         <p style='font-size: 12px;'>{row.get('ilha_calor', 'Não disponível')}</p>
-                        <p><b>💡 Intervenção Recomendada:</b></p>
+                        <p><b>💡 Possível Direção de Intervenção (genérica por classe):</b></p>
                         <p style='font-size: 12px;'>{row.get('intervencao', 'Não disponível')}</p>
+                        <p style='font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 6px; margin-top: 8px;'>
+                            ⚠️ Mapa de um produto global automatizado, não validado localmente.
+                            A intervenção é uma sugestão genérica por classe LCZ, sem considerar
+                            clima local, custo ou contexto social — use como ponto de partida
+                            para discussão, não como recomendação técnica pronta.
+                        </p>
                     </div>
                     """,
                     max_width=300

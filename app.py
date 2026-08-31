@@ -3,8 +3,8 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 import os
-from modules import inicio, explorar, investigar, visualizar, simular, avaliacao, info
-from utils import processamento, simulacao, lcz4r_fixes, lcz_visualizer
+from modules import inicio, explorar, investigar, visualizar, simular, clima_bairro, avaliacao, info
+from utils import processamento, simulacao, lcz4r
 
 # Configuração da página
 st.set_page_config(
@@ -13,8 +13,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
-        'Get Help': 'https://github.com/seu-usuario/plataforma-clima-urbano',
-        'Report a bug': 'https://github.com/seu-usuario/plataforma-clima-urbano/issues',
+        'Get Help': 'https://github.com/maxanjos/plataforma-clima-urbano',
+        'Report a bug': 'https://github.com/maxanjos/plataforma-clima-urbano/issues',
         'About': """
         # Plataforma Clima Urbano Interativo v2.0
         
@@ -29,7 +29,7 @@ st.set_page_config(
 # Carregar CSS customizado
 def load_css():
     """Carrega o arquivo CSS customizado."""
-    css_path = os.path.join(os.path.dirname(__file__), "assets", "css", "style-enhanced.css")
+    css_path = os.path.join(os.path.dirname(__file__), "assets", "css", "style.css")
     if os.path.exists(css_path):
         with open(css_path) as f:
             st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
@@ -78,59 +78,75 @@ except Exception as e:
 # Navigation
 # --- MENU COM GLASSMORPHISM ---
 with st.container():
+    menu_options = [
+        "Início",
+        "Explorar",
+        "Investigar",
+        "Visualizar",
+        "Simular",
+        "Clima de Bairro",
+        "Avaliar plataforma",
+        "Informações"
+    ]
+
+    # Consome um pedido de navegação programática (utils.navegacao.ir_para), se houver,
+    # forçando o menu a refletir a página de destino. default_index fica fixo em 0
+    # (só afeta a primeira montagem); manual_select é o mecanismo do componente para
+    # forçar uma seleção pós-montagem sem interferir em cliques manuais nas outras abas.
+    manual_select = None
+    if st.session_state.pop('nav_override', False):
+        pagina_alvo = st.session_state.get('navigation', 'Início')
+        if pagina_alvo in menu_options:
+            manual_select = menu_options.index(pagina_alvo)
+
     pagina_selecionada = option_menu(
         menu_title=None,
-        options=[
-            "Início", 
-            "Explorar", 
-            "Investigar", 
-            "Visualizar", 
-            "Simular", 
-            "Avaliar plataforma",
-            "Informações"
-        ],
+        options=menu_options,
         icons=[
-            "house", 
-            "cloud-upload", 
-            "search", 
-            "bar-chart", 
-            "cpu", 
+            "house",
+            "cloud-upload",
+            "search",
+            "bar-chart",
+            "cpu",
+            "signpost-split",
             "award",
-            "award",
+            "info-circle",
         ],
         menu_icon="cast",
         default_index=0,
+        manual_select=manual_select,
+        key="main_option_menu",
         orientation="horizontal",
         styles={
             "container": {
                 "padding": "0.7rem 1rem",
                 "background": "rgba(255, 255, 255, 0.25)",
                 "backdrop-filter": "blur(12px)",   # efeito vidro
-                "border-radius": "var(--border-radius-xl)",
-                "box-shadow": "0 8px 32px 0 rgba(31, 38, 135, 0.37)",
+                "border-radius": "24px",
+                "box-shadow": "0 8px 32px 0 rgba(15, 118, 110, 0.25)",
                 "margin-bottom": "2rem"
             },
             "icon": {
-                "color": "var(--primary-color)", 
+                "color": "#0f766e",
                 "font-size": "18px"
             },
             "nav-link": {
-                "font-size": "1rem", 
+                "font-size": "1rem",
                 "font-weight": "600",
-                "letter-spacing": "0.5px", 
+                "letter-spacing": "0.5px",
                 "text-transform": "uppercase",
-                "margin": "0px 8px", 
+                "margin": "0px 8px",
                 "padding": "14px 20px",
-                "color": "var(--text-secondary)", 
+                "color": "#48604a",
                 "--hover-color": "rgba(255, 255, 255, 0.15)",
-                "border-radius": "var(--border-radius-lg)",
-                "transition": "var(--transition)"
+                "border-radius": "16px",
+                "transition": "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
             },
             "nav-link-selected": {
-                "background": "linear-gradient(135deg, rgba(102,126,234,0.8), rgba(118,75,162,0.8))",
+                "background": "linear-gradient(135deg, rgba(15,118,110,0.85), rgba(14,165,233,0.85))",
                 "color": "white",
-                "border-radius": "var(--border-radius-lg)",
-                "box-shadow": "var(--shadow-md)",
+                "border-radius": "16px",
+                "box-shadow": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
                 "text-shadow": "0 1px 3px rgba(0,0,0,0.3)"
             },
         }
@@ -148,6 +164,8 @@ elif pagina_selecionada == "Visualizar":
     visualizar.renderizar_pagina()
 elif pagina_selecionada == "Simular":
     simular.renderizar_pagina()
+elif pagina_selecionada == "Clima de Bairro":
+    clima_bairro.renderizar_pagina()
 elif st.session_state['navigation'] == "Avaliar plataforma":
     avaliacao.renderizar_pagina()
 elif st.session_state['navigation'] == "Informações":
@@ -160,7 +178,7 @@ st.markdown("""
     <p>
         <strong>Plataforma Clima Urbano Interativo</strong> | 
         Desenvolvido para ensino e pesquisa em Geografia | 
-        <a href="https://github.com/maxanjos" target="_blank">GitHub</a> | 
+        <a href="https://github.com/ByMaxAnjos" target="_blank">GitHub</a> |
         <a href="mailto:maxanjos@campus.ul.pt">Contato</a>
     </p>
     <p style="font-size: 0.8rem;">

@@ -87,3 +87,10 @@ FILES_SUMMARY.txt
 # Local data files (uncomment if needed)
 # *.csv
 # *.geojson
+
+# Saídas geradas em tempo de execução (isave_map/isave dos módulos LCZ4py)
+LCZ4r_output/
+
+# Frames intermediários de scripts/generate_platform_gifs.py (só os .gif finais
+# em assets/gifs/ importam)
+assets/gifs/_frames/

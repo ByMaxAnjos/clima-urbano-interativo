@@ -12,9 +12,18 @@ urllib3
 # Dependências para LCZ4r/LCZ4py
 rasterio
 requests
-# LCZ4py não está publicado no PyPI ainda — instale em modo editável a partir do
-# repositório local: pip install -e /caminho/para/lcz4r_python
+xarray
+h5netcdf
+# xarray e h5netcdf são usados por lcz_get_lst e lcz_grid_pollution_ghap
+# (temperatura de superfície e qualidade do ar em Explorar), mas não estão nas
+# dependências core do LCZ4py apesar de serem necessários em tempo de
+# execução (xarray com engine="h5netcdf" para ler os arquivos do Sentinel-3)
+# — sem isso, ImportError/erro ao abrir o arquivo.
+#
+# LCZ4py não está publicado no PyPI ainda — instalado direto do GitHub
 # (traz como dependências: polars, pyarrow, scipy, httpx, aiohttp, rioxarray,
 # tenacity, diskcache, kaleido, nest_asyncio, matplotlib, entre outras — ver
-# seu pyproject.toml. Não precisamos mais listar matplotlib diretamente: a
-# plataforma não o importa mais, só o LCZ4py o usa internamente.)
+# o pyproject.toml do LCZ4py). Fixamos um commit específico para não quebrar
+# o deploy silenciosamente se o pacote mudar; atualize o hash ao testar uma
+# nova versão.
+LCZ4py @ git+https://github.com/ByMaxAnjos/LCZ4py.git@f9b08d9

@@ -9,14 +9,14 @@ from utils import processamento, simulacao, lcz4r
 # Configuração da página
 st.set_page_config(
     page_title="Plataforma Clima Urbano",
-    page_icon="🌍",
+    page_icon=os.path.join(os.path.dirname(__file__), "assets", "brand", "favicon.svg"),
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
-        'Get Help': 'https://github.com/maxanjos/plataforma-clima-urbano',
-        'Report a bug': 'https://github.com/maxanjos/plataforma-clima-urbano/issues',
+        'Get Help': 'https://github.com/ByMaxAnjos/clima-urbano-interativo',
+        'Report a bug': 'https://github.com/ByMaxAnjos/clima-urbano-interativo/issues',
         'About': """
-        # Plataforma Clima Urbano Interativo v2.0
+        # Plataforma Clima Urbano Interativo v3.0
         
         Ferramenta educacional para análise de Ilhas de Calor Urbanas (ICU) 
         e Zonas Climáticas Locais (ZCL).
@@ -48,27 +48,30 @@ def init_session_state():
         st.session_state.area_de_interesse = None
     if 'analise_pronta' not in st.session_state:
         st.session_state.analise_pronta = False
+    if 'cidade_base' not in st.session_state:
+        st.session_state.cidade_base = "São Paulo"
 
 init_session_state()
 
-# Carregar dados base uma única vez
+# Carregar dados base uma única vez por cidade selecionada (ver utils.processamento.CIDADES_BASE)
 @st.cache_data
-def carregar_dados_base():
-    """Carrega os dados base de ZCL e temperatura."""
-    caminho_zcl = os.path.join(os.path.dirname(__file__), "data", "sao_paulo_zcl.geojson")
-    caminho_temp = os.path.join(os.path.dirname(__file__), "data", "sao_paulo_temp.geojson")
-    
+def carregar_dados_base(cidade):
+    """Carrega os dados base de ZCL e temperatura para a cidade escolhida."""
+    info_cidade = processamento.CIDADES_BASE[cidade]
+    caminho_zcl = os.path.join(os.path.dirname(__file__), "data", info_cidade["zcl"])
+    caminho_temp = os.path.join(os.path.dirname(__file__), "data", info_cidade["temp"])
+
     gdf_zcl, gdf_temp, erro = processamento.carregar_dados_base(caminho_zcl, caminho_temp)
-    
+
     if erro:
         st.error(f"❌ {erro}")
         st.stop()
-    
+
     return gdf_zcl, gdf_temp
 
 # Carregar dados
 try:
-    gdf_zcl_base, gdf_temp_base = carregar_dados_base()
+    gdf_zcl_base, gdf_temp_base = carregar_dados_base(st.session_state.cidade_base)
     # Armazenar na sessão para acesso pelos módulos
     st.session_state['dados_base'] = (gdf_zcl_base, gdf_temp_base)
 except Exception as e:
@@ -104,25 +107,25 @@ with st.container():
         options=menu_options,
         icons=[
             "house",
-            "cloud-upload",
+            "compass",
             "search",
-            "bar-chart",
-            "cpu",
+            "bar-chart-line",
+            "sliders",
             "signpost-split",
-            "award",
+            "clipboard-check",
             "info-circle",
         ],
-        menu_icon="cast",
+        menu_icon="globe2",
         default_index=0,
         manual_select=manual_select,
         key="main_option_menu",
         orientation="horizontal",
         styles={
             "container": {
-                "padding": "0.7rem 1rem",
+                "padding": "0.55rem 0.7rem",
                 "background": "rgba(255, 255, 255, 0.25)",
                 "backdrop-filter": "blur(12px)",   # efeito vidro
-                "border-radius": "24px",
+                "border-radius": "12px",
                 "box-shadow": "0 8px 32px 0 rgba(15, 118, 110, 0.25)",
                 "margin-bottom": "2rem"
             },
@@ -131,21 +134,22 @@ with st.container():
                 "font-size": "18px"
             },
             "nav-link": {
-                "font-size": "1rem",
+                "font-size": "0.92rem",
                 "font-weight": "600",
-                "letter-spacing": "0.5px",
-                "text-transform": "uppercase",
-                "margin": "0px 8px",
-                "padding": "14px 20px",
+                "letter-spacing": "0",
+                "text-transform": "none",
+                "white-space": "nowrap",
+                "margin": "0px 3px",
+                "padding": "11px 12px",
                 "color": "#48604a",
                 "--hover-color": "rgba(255, 255, 255, 0.15)",
-                "border-radius": "16px",
+                "border-radius": "9px",
                 "transition": "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
             },
             "nav-link-selected": {
                 "background": "linear-gradient(135deg, rgba(15,118,110,0.85), rgba(14,165,233,0.85))",
                 "color": "white",
-                "border-radius": "16px",
+                "border-radius": "9px",
                 "box-shadow": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
                 "text-shadow": "0 1px 3px rgba(0,0,0,0.3)"
             },
@@ -186,4 +190,3 @@ st.markdown("""
     </p>
 </div>
 """, unsafe_allow_html=True)
-

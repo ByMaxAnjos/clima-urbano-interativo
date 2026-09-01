@@ -18,7 +18,7 @@ GLOSSARIO = {
         "sensoriamento remoto. É mais intensa de dia e não é a mesma coisa que a temperatura "
         "do ar sentida pelas pessoas."
     ),
-    "Albedo": "Fração da radiação solar que uma superfície reflete, ao invés de absorver. Superfícies claras têm albedo alto e aquecem menos.",
+    "Albedo": "Fração da radiação solar que uma superfície reflete, em vez de absorver. Superfícies claras têm albedo alto e aquecem menos.",
     "Rugosidade da superfície": "Quão irregular é a superfície urbana (altura e espaçamento de prédios), o que afeta a circulação do vento e a troca de calor com a atmosfera.",
     "Evapotranspiração": "Perda de água para a atmosfera pela evaporação do solo e pela transpiração das plantas — processo que resfria o ar ao redor da vegetação.",
     "Correlação espacial vs. autocorrelação espacial": (

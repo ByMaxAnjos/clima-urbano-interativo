@@ -6,6 +6,23 @@ from shapely.geometry import Point, Polygon
 import streamlit as st
 import numpy as np
 
+# Cidades com dados-base de ZCL prontos para a análise no módulo Investigar/Visualizar
+# (arquivo "temp" da Juiz de Fora reaproveita o zcl porque gdf_temp_base não é
+# consumido por nenhum módulo hoje — ver comentário em app.py).
+CIDADES_BASE = {
+    "São Paulo": {
+        "zcl": "sao_paulo_zcl.geojson",
+        "temp": "sao_paulo_temp.geojson",
+        "exemplo_csv": "exemplo_dados_sao_paulo.csv",
+    },
+    "Juiz de Fora": {
+        "zcl": "juiz_de_fora_zcl.geojson",
+        "temp": "juiz_de_fora_zcl.geojson",
+        "exemplo_csv": "exemplo_dados_juiz_de_fora.csv",
+    },
+}
+
+
 def carregar_dados_base(caminho_zcl, caminho_temp):
     """Carrega os arquivos GeoJSON base em GeoDataFrames."""
     try:

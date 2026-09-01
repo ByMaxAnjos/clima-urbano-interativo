@@ -16,6 +16,7 @@ import streamlit as st
 from utils import processamento
 from utils.glossario import renderizar_entenda_dados
 from utils.navegacao import ir_para
+from utils.ui import renderizar_cabecalho_modulo, icon_markup
 
 ETAPAS = [
     "Aproximação pela plataforma",
@@ -23,6 +24,22 @@ ETAPAS = [
     "Trabalho de campo escolar",
     "Integração dos dados na plataforma",
     "Percepção, debate e devolutiva",
+]
+
+ETAPAS_GUIA = [
+    ("Ler", "entender o lugar", "overview"),
+    ("Delimitar", "escolher a área", "explore"),
+    ("Medir", "ir a campo", "investigate"),
+    ("Cruzar", "comparar dados", "visualize"),
+    ("Compartilhar", "devolver à comunidade", "resources"),
+]
+
+ETAPAS_RESULTADO = [
+    "Uma hipótese sobre onde o bairro pode ser mais quente ou mais fresco.",
+    "Um polígono caminhável que representa a área estudada.",
+    "Um conjunto de medições comparáveis, com data e horário registrados.",
+    "Uma leitura combinando mapa, dados de campo e Zona Climática Local.",
+    "Uma devolutiva simples para estudantes, escola e comunidade.",
 ]
 
 ROTEIRO_CAMPO_MD = """# Roteiro de Campo — Clima de Bairro
@@ -68,12 +85,11 @@ def renderizar_pagina():
     """Renderiza o módulo Clima de Bairro."""
     _inicializar_estado()
 
-    st.markdown("""
-    <div class="module-header">
-        <h2>🏘️ Clima de Bairro</h2>
-        <p>Um roteiro guiado para estudar o clima do bairro da escola — do mapa ao campo, do dado à comunidade.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    renderizar_cabecalho_modulo(
+        "Clima de Bairro",
+        "Um roteiro guiado para estudar o clima do bairro da escola, do mapa ao campo e do dado à comunidade.",
+        icone="neighborhood"
+    )
 
     st.markdown(
         "**Clima de bairro** é uma escala intermediária entre o clima da cidade inteira e o "
@@ -84,18 +100,36 @@ def renderizar_pagina():
     )
     renderizar_entenda_dados(
         termos=["LCZ (Zona Climática Local)", "Ilha de calor do ar (dossel)", "Ilha de calor de superfície (LST)"],
-        titulo="🔍 Antes de começar: entenda os termos"
+        titulo="Antes de começar: entenda os termos"
     )
 
     concluidas = sum(st.session_state.clima_bairro_etapas.values())
-    st.progress(concluidas / len(ETAPAS), text=f"{concluidas}/{len(ETAPAS)} etapas marcadas como concluídas")
+    proxima = next((i for i, etapa in enumerate(ETAPAS) if not st.session_state.clima_bairro_etapas[etapa]), None)
+    guia_html = '<div class="learning-guide neighborhood-guide">'
+    for index, (nome, detalhe, icone) in enumerate(ETAPAS_GUIA):
+        estado = "is-active" if proxima == index else ("is-done" if index < concluidas else "")
+        guia_html += (
+            f'<div class="learning-guide-step {estado}"><span class="learning-guide-icon">'
+            f'{icon_markup(nome, "1.25rem", icone)}</span><span>{index + 1}</span>'
+            f'<div><strong>{nome}</strong><small>{detalhe}</small></div></div>'
+        )
+        if index < len(ETAPAS_GUIA) - 1:
+            guia_html += '<div class="learning-guide-connector"></div>'
+    guia_html += '</div>'
+    st.markdown(guia_html, unsafe_allow_html=True)
+    if proxima is None:
+        st.success("Roteiro completo. Revise a devolutiva e compartilhe o que a turma aprendeu.")
+    else:
+        st.progress(concluidas / len(ETAPAS), text=f"{concluidas} de {len(ETAPAS)} etapas concluídas")
+        st.info(f"**Próximo passo:** {ETAPAS[proxima]}. {ETAPAS_RESULTADO[proxima]}")
 
     # --- Etapa 1 ---
     with st.expander(f"**1. {ETAPAS[0]}**", expanded=not st.session_state.clima_bairro_etapas[ETAPAS[0]]):
+        st.caption(f"Resultado esperado: {ETAPAS_RESULTADO[0]}")
         st.markdown(
             "Gere ou visualize o mapa de Zonas Climáticas Locais do entorno da escola no módulo "
             "**Explorar**. A turma identifica classes construídas e de cobertura de terreno, áreas "
-            "mais impermeabilizadas e manchas de vegetação, e formula hipóteses — por exemplo: "
+            "mais impermeabilizadas e manchas de vegetação, e formula hipóteses. Por exemplo: "
             "*'as ruas com pouca arborização serão mais quentes?'*, *'o pátio da escola se comporta "
             "como ilha de calor?'*"
         )
@@ -111,6 +145,7 @@ def renderizar_pagina():
 
     # --- Etapa 2 ---
     with st.expander(f"**2. {ETAPAS[1]}**", expanded=not st.session_state.clima_bairro_etapas[ETAPAS[1]]):
+        st.caption(f"Resultado esperado: {ETAPAS_RESULTADO[1]}")
         st.markdown(
             "Defina um recorte caminhável e pedagogicamente viável: entorno imediato da escola, "
             "raio de 500 m a 1 km, ou conjunto de ruas frequentadas pelos estudantes. Desenhe essa "
@@ -130,6 +165,7 @@ def renderizar_pagina():
 
     # --- Etapa 3 ---
     with st.expander(f"**3. {ETAPAS[2]}**", expanded=not st.session_state.clima_bairro_etapas[ETAPAS[2]]):
+        st.caption(f"Resultado esperado: {ETAPAS_RESULTADO[2]}")
         st.markdown(
             "Colete dados em pontos contrastantes do bairro (pátio, rua arborizada, rua exposta, "
             "praça, ponto de ônibus...). Baixe o roteiro abaixo para orientar a turma em campo."
@@ -148,6 +184,7 @@ def renderizar_pagina():
 
     # --- Etapa 4 ---
     with st.expander(f"**4. {ETAPAS[3]}**", expanded=not st.session_state.clima_bairro_etapas[ETAPAS[3]]):
+        st.caption(f"Resultado esperado: {ETAPAS_RESULTADO[3]}")
         st.markdown(
             "Organize os dados coletados em uma planilha CSV com latitude, longitude e o valor "
             "medido, carregue-a no módulo **Investigar**, e compare médias e distribuição por "
@@ -171,8 +208,9 @@ def renderizar_pagina():
 
     # --- Etapa 5 ---
     with st.expander(f"**5. {ETAPAS[4]}**", expanded=not st.session_state.clima_bairro_etapas[ETAPAS[4]]):
+        st.caption(f"Resultado esperado: {ETAPAS_RESULTADO[4]}")
         st.markdown(
-            "Reúna a percepção de estudantes, professores e moradores — lugares mais quentes/frios, "
+            "Reúna a percepção de estudantes, professores e moradores: lugares mais quentes/frios, "
             "trajetos cotidianos, efeitos na saúde, sugestões de melhoria. Registre abaixo para gerar "
             "uma devolutiva simples para a comunidade escolar."
         )

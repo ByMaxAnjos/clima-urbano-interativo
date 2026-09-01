@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Marca Clima Urbano</title>
+  <desc id="desc">Mapa circular com edifícios, faixa térmica e uma folha.</desc>
+  <defs>
+    <linearGradient id="heat" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#0ea5e9"/>
+      <stop offset="0.52" stop-color="#16a34a"/>
+      <stop offset="1" stop-color="#ef4444"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="57" fill="#082f49"/>
+  <path d="M18 85c15-8 28-11 44-7 17 4 29 2 48-8" fill="none" stroke="url(#heat)" stroke-width="7" stroke-linecap="round"/>
+  <path d="M25 83V53h13v30M42 83V39h14v44M61 83V49h13v34M78 83V30h15v53M97 83V57h9v26" fill="#f8fafc" opacity=".95"/>
+  <path d="M75 25c15 1 27 9 30 23-14 3-28-2-34-13-2-4 0-8 4-10Z" fill="#86efac"/>
+  <path d="M73 49c4-10 12-17 23-21" fill="none" stroke="#166534" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="64" cy="64" r="57" fill="none" stroke="#bae6fd" stroke-opacity=".35" stroke-width="2"/>
+</svg>

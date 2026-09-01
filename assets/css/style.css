@@ -81,68 +81,347 @@ body {
   padding: 1.5rem 1rem;
 }
 
-/* Headers personalizados com gradientes temáticos */
+/* Abertura da página: composição editorial aberta, sem banner retangular. */
 .main-header {
-  background: var(--background-gradient);
-  color: white;
-  padding: 3rem 2rem;
-  border-radius: var(--border-radius-lg);
-  margin-bottom: 2rem;
-  text-align: center;
-  box-shadow: var(--shadow-xl);
+  color: var(--text-primary);
+  padding: 2.4rem 0 2.8rem;
+  margin-bottom: 1.4rem;
+  text-align: left;
   position: relative;
-  overflow: hidden;
-}
-
-.main-header::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 50%);
-  pointer-events: none;
 }
 
 .main-header h1 {
   margin: 0;
-  font-size: 3rem;
+  max-width: 760px;
+  font-size: 2.8rem;
+  line-height: 1.15;
   font-weight: 700;
   margin-bottom: 0.5rem;
   font-family: var(--font-heading);
-  text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  letter-spacing: 0;
+  animation: fadeInUp 0.7s ease both;
+}
+
+.hero-eyebrow {
+  color: var(--primary-color);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  margin: 0 0 0.8rem;
+  animation: fadeInUp 0.5s ease both;
+}
+
+.hero-brand-icon {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 0.35rem;
+}
+
+.hero-signal {
+  display: block;
+  width: min(100%, 28rem);
+  height: 4px;
+  margin-top: 1.25rem;
+  border-radius: 2px;
+  background: var(--thermal-gradient);
+  transform-origin: left;
+  animation: signalGrow 1.2s 0.45s ease both;
+}
+
+@keyframes signalGrow {
+  from { transform: scaleX(0); opacity: 0; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+
+.section-title-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--primary-color);
+  margin: 1rem 0;
+}
+
+.section-title-with-icon .platform-icon {
+  width: 2rem !important;
+  height: 2rem !important;
+  filter: none;
 }
 
 .main-header .subtitle {
-  font-size: 1.3rem;
-  opacity: 0.95;
+  max-width: 680px;
+  color: var(--text-secondary);
+  font-size: 1.15rem;
+  line-height: 1.55;
   margin: 0;
   font-weight: 400;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  animation: fadeInUp 0.7s 0.15s ease both;
+}
+
+.main-header-split {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  text-align: left;
+}
+
+.main-header-split .main-header-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.main-header-split h1 {
+  font-size: 2.4rem;
+}
+
+.main-header-media {
+  flex: 0 0 auto;
+  width: 300px;
+  height: 300px;
+  max-width: 38%;
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.lcz-hero-mosaic {
+  width: 248px;
+  height: 248px;
+  border-radius: 50%;
+  background: #082f49;
+  box-shadow: 0 16px 35px rgba(8, 47, 73, 0.22);
+  animation: heroFloat 6s ease-in-out infinite;
+}
+
+.lcz-hero-mosaic::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border: 1px solid rgba(14, 165, 233, 0.5);
+  border-radius: 50%;
+  animation: orbitPulse 4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.lcz-hero-mosaic::after {
+  content: 'LCZ / TEMPERATURA';
+  position: absolute;
+  right: 0;
+  bottom: 0.5rem;
+  color: var(--primary-color);
+  font: 700 0.62rem var(--font-mono);
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  transform: translateX(14%);
+}
+
+@keyframes heroFloat {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-9px) rotate(2deg); }
+}
+
+@keyframes orbitPulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.96); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+
+@media (max-width: 768px) {
+  .main .nav-pills {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+    scrollbar-width: thin;
+  }
+
+  .main .nav-pills .nav-link {
+    flex: 0 0 auto;
+    font-size: 0.82rem;
+    padding: 9px 10px;
+  }
+
+  .main-header-split {
+    flex-direction: column;
+    text-align: left;
+  }
+
+  .main-header-media {
+    width: 100%;
+    max-width: 300px;
+    height: 280px;
+    align-self: center;
+  }
 }
 
 .module-header {
-  background: var(--background-gradient);
-  color: white;
-  padding: 2rem;
-  border-radius: var(--border-radius-lg);
-  margin-bottom: 2rem;
-  text-align: center;
-  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  padding: 1.8rem 0 2rem;
+  margin-bottom: 1.5rem;
   position: relative;
-  overflow: hidden;
+  border-bottom: 1px solid var(--border-color);
 }
 
-.module-header::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 50%);
-  pointer-events: none;
+.module-header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.module-header-copy {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.module-header-copy > div:last-child {
+  min-width: 0;
+}
+
+.module-header .platform-icon {
+  width: 3.5rem !important;
+  height: 3.5rem !important;
+  color: var(--primary-color);
+}
+
+.module-header h1, .module-header h2 {
+  color: var(--text-primary);
+}
+
+.module-header p {
+  color: var(--text-secondary);
+}
+
+.module-animation {
+  flex: 0 0 240px;
+  width: 240px;
+  height: 132px;
+  display: grid;
+  place-items: center;
+  color: var(--primary-color);
+}
+
+.learning-guide {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  margin: 0 0 0.85rem;
+  border-left: 3px solid var(--secondary-color);
+  background: rgba(14, 165, 233, 0.06);
+}
+
+.learning-guide-step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.learning-guide-step span {
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font: 700 0.75rem var(--font-mono);
+}
+
+.learning-guide-step .learning-guide-icon {
+  width: auto;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+}
+
+.learning-guide-step .learning-guide-icon .platform-icon {
+  width: 1.25rem !important;
+  height: 1.25rem !important;
+  filter: none;
+}
+
+.learning-guide-step strong,
+.learning-guide-step small {
+  display: block;
+}
+
+.learning-guide-step strong { color: var(--text-primary); font-size: 0.85rem; }
+.learning-guide-step small { font-size: 0.72rem; }
+.learning-guide-step.is-active { color: var(--primary-color); }
+.learning-guide-step.is-active span { background: var(--primary-color); color: white; }
+.learning-guide-step.is-done { color: var(--vegetation-color); }
+.learning-guide-step.is-done span { background: var(--vegetation-color); color: white; }
+.learning-guide-connector { flex: 1; min-width: 1.5rem; height: 1px; background: var(--border-color); }
+
+@media (max-width: 540px) {
+  .learning-guide { align-items: flex-start; flex-direction: column; }
+  .learning-guide-connector { width: 1px; min-width: 0; height: 0.5rem; margin-left: 0.85rem; }
+}
+
+.module-animation-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.module-animation-svg path,
+.module-animation-svg circle,
+.module-animation-svg rect {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.module-animation-svg .anim-map-line,
+.module-animation-svg .anim-axis {
+  opacity: .22;
+  stroke-width: 1.5;
+}
+
+.module-animation-svg .anim-pulse { fill: currentColor; opacity: .12; stroke: none; animation: modulePulse 2.4s ease-in-out infinite; }
+.module-animation-svg .anim-pin { fill: var(--surface-color); stroke: currentColor; animation: moduleBounce 2.4s ease-in-out infinite; transform-origin: 103px 88px; }
+.module-animation-svg .anim-map-route,
+.module-animation-svg .anim-field,
+.module-animation-svg .anim-chart-line { stroke: var(--secondary-color); stroke-width: 3.5; stroke-dasharray: 240; stroke-dashoffset: 240; animation: drawModuleLine 3.5s ease-in-out infinite; }
+.module-animation-svg .anim-point { fill: var(--vegetation-color); stroke: var(--surface-color); stroke-width: 2; animation: modulePoint 2.8s ease-in-out infinite; }
+.module-animation-svg .p2 { animation-delay: .3s; }.module-animation-svg .p3 { animation-delay: .6s; }.module-animation-svg .p4 { animation-delay: .9s; }
+.module-animation-svg .anim-lens { fill: rgba(14, 165, 233, .08); stroke: var(--primary-color); stroke-width: 3; }
+.module-animation-svg .anim-lens-handle { stroke: var(--primary-color); stroke-width: 4; }
+.module-animation-svg .anim-bar { fill: var(--secondary-color); stroke: none; transform-origin: 0 126px; animation: barRise 3s ease-in-out infinite; }
+.module-animation-svg .b2 { animation-delay: .15s; }.module-animation-svg .b3 { animation-delay: .3s; }.module-animation-svg .b4 { animation-delay: .45s; }
+.module-animation-svg .anim-chart-dot { fill: var(--hot-color); stroke: var(--surface-color); stroke-width: 2; animation: modulePulse 2s ease-in-out infinite; }
+.module-animation-svg .anim-control { stroke: var(--text-muted); stroke-width: 3; }
+.module-animation-svg .anim-knob { fill: var(--surface-color); stroke: var(--accent-color); stroke-width: 3; animation: knobShift 3.8s ease-in-out infinite; }
+.module-animation-svg .k2 { animation-delay: .45s; }.module-animation-svg .k3 { animation-delay: .9s; }
+.module-animation-svg .anim-thermo { stroke: var(--hot-color); }.module-animation-svg .anim-temp { stroke: var(--hot-color); stroke-width: 4; animation: tempShift 3.2s ease-in-out infinite; }.module-animation-svg .anim-temp-fill { fill: var(--hot-color); stroke: var(--hot-color); }
+
+@keyframes drawModuleLine { 0%, 15% { stroke-dashoffset: 240; } 65%, 100% { stroke-dashoffset: 0; } }
+@keyframes modulePulse { 0%, 100% { transform: scale(.8); opacity: .25; } 50% { transform: scale(1.15); opacity: .8; } }
+@keyframes modulePoint { 0%, 100% { transform: translateY(2px); opacity: .45; } 50% { transform: translateY(-4px); opacity: 1; } }
+@keyframes moduleBounce { 0%, 100% { transform: translateY(2px); } 50% { transform: translateY(-5px); } }
+@keyframes barRise { 0%, 100% { transform: scaleY(.8); opacity: .7; } 50% { transform: scaleY(1); opacity: 1; } }
+@keyframes knobShift { 0%, 100% { transform: translateX(-4px); } 50% { transform: translateX(5px); } }
+@keyframes tempShift { 0%, 100% { stroke-dasharray: 22 40; } 50% { stroke-dasharray: 42 20; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .module-animation-svg * { animation: none !important; }
+}
+
+/* Marca proprietária usada nos cabeçalhos; o significado vem do texto ao lado. */
+.platform-icon {
+  display: block;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+.module-header .platform-icon {
+  width: 3.5rem !important;
+  height: 3.5rem !important;
 }
 
 .module-header h1, .module-header h2 {
@@ -151,12 +430,12 @@ body {
   font-weight: 700;
   margin-bottom: 0.5rem;
   font-family: var(--font-heading);
-  text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  text-shadow: none;
 }
 
 .module-header p {
   margin: 0;
-  opacity: 0.95;
+  opacity: 1;
   font-size: 1.2rem;
   font-weight: 400;
 }
@@ -209,6 +488,15 @@ body {
   font-size: 1.4rem;
   font-weight: 600;
   font-family: var(--font-heading);
+}
+
+.module-card h4 .platform-icon {
+  display: inline-block;
+  width: 1.8rem !important;
+  height: 1.8rem !important;
+  vertical-align: middle;
+  margin-right: 0.35rem;
+  filter: none;
 }
 
 .module-card p {
@@ -466,7 +754,7 @@ body {
 /* Responsividade */
 @media (max-width: 768px) {
   .main-header h1 {
-    font-size: 2.5rem;
+    font-size: 2.25rem;
   }
 
   .main-header .subtitle {
@@ -482,6 +770,16 @@ body {
     font-size: 2rem;
   }
 
+  .module-header-content {
+    align-items: flex-start;
+  }
+
+  .module-animation {
+    flex-basis: 180px;
+    width: 180px;
+    height: 110px;
+  }
+
   .main .block-container {
     padding-top: 1rem;
     padding-bottom: 1rem;
@@ -490,11 +788,20 @@ body {
 
 @media (max-width: 480px) {
   .main-header {
-    padding: 2rem 1rem;
+    padding: 1.8rem 0 2rem;
   }
 
   .module-header {
     padding: 1.5rem 1rem;
+  }
+
+  .module-header-content {
+    flex-direction: column;
+  }
+
+  .module-animation {
+    align-self: center;
+    width: min(100%, 240px);
   }
 
   .module-card {

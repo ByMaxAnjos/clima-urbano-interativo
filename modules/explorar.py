@@ -1,1390 +1,364 @@
 # modules/explorar.py
 
 import streamlit as st
-import folium
-from streamlit_folium import st_folium
-import geopandas as gpd
-import pandas as pd
-import os
-import base64
-import tempfile
-import rasterio
+import streamlit.components.v1 as components
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import json
+import numpy as np
 import time
+import json
+
 from utils.lcz4r import lcz_get_map, process_lcz_map, enhance_lcz_data, lcz_plot_map
 
+# Paleta oficial das classes LCZ (Stewart & Oke, 2012 / WUDAPT).
+CORES_LCZ = {
+    'LCZ 1': '#910613', 'LCZ 2': '#D9081C', 'LCZ 3': '#FF0A22', 'LCZ 4': '#C54F1E',
+    'LCZ 5': '#FF6628', 'LCZ 6': '#FF985E', 'LCZ 7': '#FDED3F', 'LCZ 8': '#BBBBBB',
+    'LCZ 9': '#FFCBAB', 'LCZ 10': '#565656', 'LCZ A': '#006A18', 'LCZ B': '#00A926',
+    'LCZ C': '#628432', 'LCZ D': '#B5DA7F', 'LCZ E': '#000000', 'LCZ F': '#FCF7B1',
+    'LCZ G': '#656BFA'
+}
+
+
 def init_session_state():
-    """
-    Inicializa o estado da sessão com valores padrão e validação.
-    Implementa controle de versão e limpeza automática de dados antigos.
-    """
-    # Versão do esquema de dados para controle de compatibilidade
-    current_version = "1.2.0"
-    
-    # Verificar e atualizar versão do esquema
-    if 'lcz_schema_version' not in st.session_state:
-        st.session_state.lcz_schema_version = current_version
-    elif st.session_state.lcz_schema_version != current_version:
-        # Limpar dados antigos se a versão mudou
-        clear_lcz_session_data()
-        st.session_state.lcz_schema_version = current_version
-    
-    # Inicializar dados principais
-    session_defaults = {
+    """Inicializa o estado da sessão com valores padrão."""
+    defaults = {
         'lcz_data': None,
         'lcz_raster_data': None,
         'lcz_raster_profile': None,
+        'lcz_raster_path': None,
         'lcz_city_name': None,
-        'lcz_processing_success': False,
         'lcz_success_message': "",
         'lcz_error_message': "",
-        'lcz_last_update': None,
-        'lcz_data_size_mb': 0.0,
         'lcz_area_stats': None,
         'lcz_plot_data': None,
-        'lcz_validation_result': None,
-        'lcz_session_id': None
+        'lcz_area_summary': None,
+        'lcz_lst_result': None,
+        'lcz_pollution_result': None,
+        'lcz_pollution_poluente': None,
     }
-    
-    for key, default_value in session_defaults.items():
+    for key, default_value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = default_value
-    
-    # Gerar ID único da sessão se não existir
-    if st.session_state.lcz_session_id is None:
-        import uuid
-        st.session_state.lcz_session_id = str(uuid.uuid4())[:8]
-    
-    # Verificar integridade dos dados existentes
-    validate_session_data()
-
-
-def validate_session_data():
-    """
-    Valida a integridade dos dados na sessão e corrige inconsistências.
-    """
-    try:
-        # Verificar consistência entre dados vetoriais e raster
-        if st.session_state.lcz_data is not None:
-            if not hasattr(st.session_state.lcz_data, 'geometry'):
-                st.warning("⚠️ Dados LCZ corrompidos detectados. Limpando sessão...")
-                clear_lcz_session_data()
-                return
-            
-            # Calcular tamanho dos dados em memória
-            import sys
-            data_size = sys.getsizeof(st.session_state.lcz_data) / (1024 * 1024)
-            st.session_state.lcz_data_size_mb = round(data_size, 2)
-            
-            # Verificar se os dados são muito antigos (mais de 1 hora)
-            if st.session_state.lcz_last_update:
-                from datetime import datetime, timedelta
-                if isinstance(st.session_state.lcz_last_update, str):
-                    last_update = datetime.fromisoformat(st.session_state.lcz_last_update)
-                else:
-                    last_update = st.session_state.lcz_last_update
-                
-                if datetime.now() - last_update > timedelta(hours=1):
-                    st.info("ℹ️ Dados LCZ antigos detectados. Considere gerar um novo mapa.")
-        
-        # Verificar limite de memória (máximo 100MB por sessão)
-        if st.session_state.lcz_data_size_mb > 100:
-            st.warning("⚠️ Uso de memória alto detectado. Considere limpar os dados da sessão.")
-            
-    except Exception as e:
-        st.error(f"❌ Erro na validação da sessão: {str(e)}")
-        clear_lcz_session_data()
 
 
 def clear_lcz_session_data():
-    """
-    Limpa dados LCZ da sessão de forma segura e completa.
-    Mantém configurações importantes e libera memória.
-    """
-    # Lista de chaves a serem limpas
-    keys_to_clear = [
-        'lcz_data', 'lcz_raster_data', 'lcz_raster_profile', 'lcz_raster_path',
-        'lcz_city_name', 'lcz_processing_success', 'lcz_success_message',
-        'lcz_error_message', 'lcz_last_update', 'lcz_data_size_mb',
-        'lcz_area_stats', 'lcz_plot_data', 'lcz_validation_result'
-    ]
-    
-    # Limpar dados específicos
-    for key in keys_to_clear:
-        if key in st.session_state:
-            st.session_state[key] = None if key != 'lcz_processing_success' else False
-    
-    # Resetar valores específicos
-    st.session_state.lcz_processing_success = False
+    """Limpa os dados de uma exploração anterior antes de gerar um novo mapa."""
+    for key in list(st.session_state.keys()):
+        if key.startswith('lcz_'):
+            st.session_state[key] = None
     st.session_state.lcz_success_message = ""
     st.session_state.lcz_error_message = ""
-    st.session_state.lcz_data_size_mb = 0.0
-    
-    # Forçar coleta de lixo para liberar memória
-    import gc
-    gc.collect()
-
-
-def get_session_info():
-    """
-    Retorna informações sobre o estado atual da sessão.
-    
-    Returns
-    -------
-    dict
-        Informações da sessão incluindo status, tamanhos e timestamps
-    """
-    info = {
-        'session_id': st.session_state.get('lcz_session_id', 'N/A'),
-        'schema_version': st.session_state.get('lcz_schema_version', 'N/A'),
-        'has_data': st.session_state.lcz_data is not None,
-        'has_raster': st.session_state.lcz_raster_data is not None,
-        'city_name': st.session_state.lcz_city_name or 'N/A',
-        'data_size_mb': st.session_state.lcz_data_size_mb,
-        'last_update': st.session_state.lcz_last_update,
-        'processing_success': st.session_state.lcz_processing_success,
-        'success_message': st.session_state.lcz_success_message,
-        'error_message': st.session_state.lcz_error_message
-    }
-    
-    return info
-
-
-def update_session_timestamp():
-    """
-    Atualiza o timestamp da última modificação dos dados.
-    """
-    from datetime import datetime
-    st.session_state.lcz_last_update = datetime.now().isoformat()
 
 
 def save_lcz_data_to_session(data, profile, city_name, enhanced_gdf, raster_path=None):
-    """
-    Salva dados LCZ na sessão de forma segura e organizada.
+    """Salva os dados de uma exploração recém-gerada na sessão."""
+    st.session_state.lcz_raster_data = data
+    st.session_state.lcz_raster_profile = profile
+    st.session_state.lcz_city_name = city_name
+    st.session_state.lcz_data = enhanced_gdf
+    st.session_state.lcz_raster_path = raster_path
+    st.session_state.lcz_success_message = f"Mapa LCZ gerado com sucesso para {city_name}."
+    st.session_state.lcz_error_message = ""
 
-    Parameters
-    ----------
-    data : numpy.ndarray
-        Dados raster LCZ
-    profile : dict
-        Perfil do raster
-    city_name : str
-        Nome da cidade
-    enhanced_gdf : geopandas.GeoDataFrame
-        Dados vetoriais aprimorados
-    raster_path : str, optional
-        Caminho do GeoTIFF recortado salvo em disco (usado por lcz_cal_area
-        para estatísticas de área diretamente do raster)
-    """
-    try:
-        # Salvar dados principais
-        st.session_state.lcz_raster_data = data
-        st.session_state.lcz_raster_profile = profile
-        st.session_state.lcz_city_name = city_name
-        st.session_state.lcz_data = enhanced_gdf
-        st.session_state.lcz_raster_path = raster_path
-        
-        # Atualizar status
-        st.session_state.lcz_processing_success = True
-        st.session_state.lcz_success_message = f"✅ Mapa LCZ gerado com sucesso para {city_name}!"
-        st.session_state.lcz_error_message = ""
-        
-        # Atualizar timestamp
-        update_session_timestamp()
-        
-        # Validar dados salvos
-        validate_session_data()
-        
-        return True
-        
-    except Exception as e:
-        st.session_state.lcz_error_message = f"Erro ao salvar dados na sessão: {str(e)}"
-        st.session_state.lcz_processing_success = False
-        return False
-
-@st.cache_data
-def get_logo_base64():
-    """Retorna o logo LCZ4r em base64 com cache."""
-    try:
-        logo_path = "assets/lcz4r_logo.png"
-        if os.path.exists(logo_path):
-            with open(logo_path, "rb") as f:
-                return base64.b64encode(f.read()).decode()
-    except:
-        pass
-    return ""
 
 def renderizar_pagina():
-    """
-    Renderiza a página do módulo Explorar com tratamento robusto de erros,
-    feedback do usuário e monitoramento de sessão.
-    """
-    
-    try:
-        # Inicializar estado da sessão com tratamento de erro
-        init_session_state()
-        
-        # Renderizar cabeçalho do módulo
-        renderizar_cabecalho_modulo()
-        
-        # Exibir status da sessão e feedback do usuário
-        renderizar_feedback_usuario()
-        
-        # Seção principal: Gerador de mapas LCZ4r
-        st.markdown("## 🚀 Gerador de Mapas LCZ4r")
-        
+    """Renderiza a página do módulo Explorar."""
+    init_session_state()
+
+    from utils.ui import renderizar_cabecalho_modulo
+    renderizar_cabecalho_modulo(
+        "Módulo Explorar",
+        "Gere e visualize mapas de Zonas Climáticas Locais (LCZ) para uma cidade",
+        icone="explore",
+    )
+
+    if st.session_state.lcz_success_message:
+        st.success(st.session_state.lcz_success_message)
+    if st.session_state.lcz_error_message:
+        st.error(st.session_state.lcz_error_message)
+
+    renderizar_gerador_lcz()
+
+    if st.session_state.lcz_data is not None:
+        st.divider()
+        aba_mapa, aba_area, aba_temperatura, aba_poluicao = st.tabs([
+            "🗺️ Mapa", "📊 Área por Classe", "🌡️ Temperatura de Superfície", "🏭 Qualidade do Ar",
+        ])
+        with aba_mapa:
+            renderizar_aba_mapa()
+        with aba_area:
+            renderizar_aba_area()
+        with aba_temperatura:
+            renderizar_aba_temperatura_superficie()
+        with aba_poluicao:
+            renderizar_aba_qualidade_ar()
+    else:
+        st.info(
+            "👆 Digite o nome de uma cidade acima e clique em **Gerar Mapa LCZ** para começar. "
+            "Use o nome completo com o país (ex.: \"Juiz de Fora, Brazil\")."
+        )
+
+
+def renderizar_gerador_lcz():
+    """Formulário para gerar um novo mapa LCZ."""
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        cidade_nome = st.text_input(
+            "Nome da cidade",
+            placeholder="Ex: São Paulo, Brazil",
+            label_visibility="collapsed",
+            value=st.session_state.lcz_city_name or "",
+        )
+    with col2:
+        gerar_mapa = st.button("🚀 Gerar Mapa LCZ", type="primary", use_container_width=True)
+
+    if gerar_mapa and cidade_nome:
+        processar_mapa_lcz(cidade_nome.strip())
+
+
+def processar_mapa_lcz(cidade_nome):
+    """Baixa e processa o mapa LCZ para a cidade informada."""
+    clear_lcz_session_data()
+
+    with st.spinner(f"Baixando e processando o mapa LCZ de {cidade_nome}... (pode levar 1-2 minutos)"):
         try:
-            renderizar_gerador_lcz()
+            from utils.lcz4r import GeocodeError, DataProcessingError
+
+            data, profile, cached_raster_path = lcz_get_map(cidade_nome, isave_map=False, return_path=True)
+            lcz_gdf = process_lcz_map(data, profile)
+            enhanced_gdf = enhance_lcz_data(lcz_gdf)
+
+            save_lcz_data_to_session(data, profile, cidade_nome, enhanced_gdf, raster_path=cached_raster_path)
+
+        except GeocodeError as e:
+            st.session_state.lcz_error_message = (
+                f"Não encontramos a cidade \"{cidade_nome}\". Tente o nome completo com o país "
+                f"(ex.: \"{cidade_nome}, Brazil\")."
+            )
+        except (DataProcessingError, ConnectionError) as e:
+            st.session_state.lcz_error_message = str(e)
         except Exception as e:
-            st.error(f"❌ Erro no gerador LCZ: {str(e)}")
-            with st.expander("🔧 Detalhes técnicos"):
-                st.code(f"Erro: {type(e).__name__}\nDetalhes: {str(e)}")
-        
-        # Seções condicionais baseadas na disponibilidade de dados
-        if st.session_state.lcz_data is not None:
-            renderizar_secoes_analise()
-        else:
-            renderizar_instrucoes_iniciais()
-        
-        # Seção de informações e ajuda
-        renderizar_secao_ajuda()
-        
-        # Monitoramento de sessão (apenas para debug, se necessário)
-        if st.sidebar.checkbox("🔧 Modo Debug", help="Exibir informações técnicas da sessão"):
-            renderizar_debug_sessao()
-            
-    except Exception as e:
-        # Tratamento de erro global para a página
-        st.error("❌ **Erro crítico no módulo Explorar**")
-        st.error(f"Detalhes: {str(e)}")
-        
+            st.session_state.lcz_error_message = f"Erro inesperado ao gerar o mapa: {e}"
+
+    st.rerun()
+
+
+def renderizar_aba_mapa():
+    """Mapa LCZ: visão geral (Plotly) + exploração por clique (MapLibre)."""
+    data = st.session_state.lcz_raster_data
+    profile = st.session_state.lcz_raster_profile
+    cidade = st.session_state.lcz_city_name or "Cidade"
+
+    resultado = lcz_plot_map((data, profile), title=f"Zonas Climáticas Locais — {cidade}", isave=False)
+    # LCZ4py entrega a legenda em fonte pequena (13-14px); aumentamos aqui para
+    # ficar legível no tamanho em que o gráfico é exibido na plataforma.
+    resultado.fig.update_layout(
+        legend=dict(font=dict(size=15), title=dict(font=dict(size=16))),
+    )
+    st.plotly_chart(resultado.fig, use_container_width=True)
+
+    with st.expander("⬇️ Baixar dados do mapa"):
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("🔄 Reiniciar Módulo", type="primary"):
-                clear_lcz_session_data()
-                st.rerun()
-        
+            # Só exporta a imagem via Kaleido (headless browser, ~15-20s) quando
+            # pedido — gerá-la a cada rerun do script (inclusive ao trocar de
+            # aba) deixaria a página pesada sem necessidade.
+            if st.button("📸 Gerar imagem PNG"):
+                png_data = resultado.fig.to_image(format="png", scale=2)
+                st.download_button("⬇️ Baixar Imagem PNG", png_data, f"lcz_map_{cidade}.png", "image/png",
+                                    use_container_width=True)
         with col2:
-            if st.button("🗑️ Limpar Sessão Completa"):
-                for key in list(st.session_state.keys()):
-                    if key.startswith('lcz_'):
-                        del st.session_state[key]
-                st.rerun()
-        
-        with st.expander("🔧 Informações Técnicas"):
-            st.code(f"""
-Tipo do erro: {type(e).__name__}
-Detalhes: {str(e)}
-Sessão ID: {st.session_state.get('lcz_session_id', 'N/A')}
-Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}
-            """)
+            geojson_data = st.session_state.lcz_data.to_json()
+            st.download_button("🗺️ GeoJSON", geojson_data, f"lcz_data_{cidade}.geojson", "application/json",
+                                use_container_width=True)
+
+    st.markdown("##### Explore por classe")
+    st.caption("Clique em um polígono para entender a classe LCZ, o aquecimento esperado e as ações de mitigação. Áreas sem classificação ficam transparentes.")
+    renderizar_mapa_maplibre()
 
 
-def renderizar_cabecalho_modulo():
-    """Renderiza o cabeçalho visual do módulo."""
-    from utils.ui import renderizar_cabecalho_modulo as _renderizar_header
-    _renderizar_header(
-        "🌍 Módulo Explorar",
-        "Gere e visualize mapas de Zonas Climáticas Locais (LCZ) interativos",
-        logo_base64=get_logo_base64()
+def renderizar_mapa_maplibre():
+    """Mapa MapLibre com OpenFreeMap e camada LCZ clicável."""
+    gdf_lcz = st.session_state.lcz_data
+    if gdf_lcz is None or gdf_lcz.empty:
+        return
+    geojson = json.dumps(json.loads(gdf_lcz.to_json()), ensure_ascii=False).replace("</", "<\\/")
+    colors = json.dumps(CORES_LCZ)
+    styles = {
+        "Positron": "https://tiles.openfreemap.org/styles/positron",
+        "Liberty": "https://tiles.openfreemap.org/styles/liberty",
+        "Bright": "https://tiles.openfreemap.org/styles/bright",
+        "Dark": "https://tiles.openfreemap.org/styles/dark",
+        "Fiord": "https://tiles.openfreemap.org/styles/fiord",
+        # O OpenFreeMap implementa o modo 3D com Liberty + câmera inclinada;
+        # não há um endpoint /styles/3d separado.
+        "3D": "https://tiles.openfreemap.org/styles/liberty",
+    }
+    options = "".join(
+        f'<option value="{url}"{(" data-mode=3d selected" if name == "3D" else "")}>{name}</option>'
+        for name, url in styles.items()
+    )
+    html = f'''<!doctype html><html lang="pt-BR"><head>
+<link href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+<style>
+* {{ box-sizing:border-box }} body {{ margin:0; font-family:Arial,sans-serif; overflow:hidden }} #map {{ height:570px; width:100%; background:#e7eff2 }}
+.toolbar {{ position:absolute; z-index:3; top:12px; left:12px; right:12px; display:flex; gap:8px; flex-wrap:wrap }}
+.toolbar label,.toolbar button {{ background:rgba(255,255,255,.95); border:1px solid #cbd5e1; border-radius:7px; padding:8px 10px; box-shadow:0 2px 8px #0f172a22; font-size:12px }}
+.toolbar select {{ border:0; background:transparent; font-weight:700; color:#163044 }} .toolbar button {{ cursor:pointer; font-weight:700 }}
+.layers {{ position:absolute; z-index:4; top:54px; right:12px; width:min(270px,calc(100% - 24px)); max-height:420px; overflow:auto; padding:12px; display:none; background:#fff; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 3px 14px #0f172a2b }}
+.layers.open {{ display:block }} .layers h3 {{ margin:0 0 8px; font-size:13px }} .layer {{ display:flex; gap:7px; padding:4px 0; font-size:11px }}
+.maplibregl-popup-content {{ width:310px; max-width:calc(100vw - 44px); font-size:12px; line-height:1.45 }} .maplibregl-popup-content h3 {{ color:#0f766e; margin:0 0 8px }} .popup-label {{ display:block; margin-top:7px; color:#475569; font-weight:700; font-size:11px }}
+@media (max-width:650px) {{ #map {{ height:620px }} }}
+</style></head><body><div id="map"></div>
+<div class="toolbar"><label>Estilo <select id="style">{options}</select></label><label>Transparência <input id="opacity" type="range" min="0" max="100" value="76" step="1" aria-label="Transparência da camada LCZ"><output id="opacity-value">76%</output></label><button id="layer-button">Camadas</button><button id="reset">Recentrar</button></div>
+<div id="layers" class="layers"><h3>Camadas do estilo ativo</h3><div id="layer-list"></div></div>
+<script>
+const data={geojson}; const colors={colors}; let hoveredId=null; let lczOpacity=.76; const map=new maplibregl.Map({{container:'map',style:'{styles['Liberty']}',center:[-46.63,-23.55],zoom:10,pitch:60,bearing:55}}); map.addControl(new maplibregl.NavigationControl({{visualizePitch:true}}),'bottom-right'); map.dragRotate.enable();
+function bounds(){{const b=new maplibregl.LngLatBounds(); const walk=c=>Array.isArray(c[0])?c.forEach(walk):b.extend(c); data.features.forEach(f=>walk(f.geometry.coordinates)); return b;}}
+function safe(v){{return String(v||'').replace(/[&<>"']/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c]));}}
+function popup(e){{const p=e.features[0].properties||{{}};const title=safe(p.zcl_classe||'Zona LCZ');const html='<h3>'+title+'</h3>'+'<span class="popup-label">O que é</span><div>'+safe(p.descricao||'Descrição não disponível para esta área.')+'</div>'+'<span class="popup-label">O que esperar</span><div>'+safe(p.efeito_temp||'Efeito térmico não disponível para esta área.')+'</div>'+'<span class="popup-label">Contribuição para a ilha de calor</span><div>'+safe(p.ilha_calor||'Informação não disponível para esta área.')+'</div>'+'<span class="popup-label">Como atuar</span><div>'+safe(p.intervencao||'Consulte dados locais antes de propor uma intervenção.')+'</div>';new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);}}
+function overlay(){{['lcz-fill','lcz-line'].forEach(id=>{{if(map.getLayer(id))map.removeLayer(id);}});if(map.getSource('lcz'))map.removeSource('lcz');map.addSource('lcz',{{type:'geojson',data,generateId:true}});const noClass=['==',['get','zcl_classe'],null];const color=['case',noClass,'rgba(0,0,0,0)',['match',['get','zcl_classe'],...Object.entries(colors).flat(),'rgba(0,0,0,0)']];map.addLayer({{id:'lcz-fill',type:'fill',source:'lcz',paint:{{'fill-color':color,'fill-opacity':['case',noClass,0,lczOpacity]}}}});map.addLayer({{id:'lcz-line',type:'line',source:'lcz',paint:{{'line-color':'#163044','line-opacity':['case',noClass,0,Math.min(.7,lczOpacity+.1)],'line-width':['case',['boolean',['feature-state','hover'],false],2.4,.65]}}}});map.on('click','lcz-fill',popup);map.on('mouseenter','lcz-fill',e=>{{map.getCanvas().style.cursor='pointer';if(hoveredId!==null)map.setFeatureState({{source:'lcz',id:hoveredId}},{{hover:false}});hoveredId=e.features[0].id;map.setFeatureState({{source:'lcz',id:hoveredId}},{{hover:true}});}});map.on('mouseleave','lcz-fill',()=>{{map.getCanvas().style.cursor='';if(hoveredId!==null)map.setFeatureState({{source:'lcz',id:hoveredId}},{{hover:false}});hoveredId=null;}});map.fitBounds(bounds(),{{padding:35,maxZoom:13,duration:500}});}}
+function layers(){{const list=document.getElementById('layer-list');list.innerHTML='';(map.getStyle().layers||[]).forEach(layer=>{{if(['lcz-fill','lcz-line'].includes(layer.id))return;const row=document.createElement('label');row.className='layer';const input=document.createElement('input');input.type='checkbox';input.checked=map.getLayoutProperty(layer.id,'visibility')!=='none';input.onchange=()=>map.setLayoutProperty(layer.id,'visibility',input.checked?'visible':'none');row.append(input,document.createTextNode(layer.id));list.append(row);}});}}
+map.on('load',()=>{{overlay();layers();}}); function change(url,is3d){{map.setStyle(url);map.dragRotate[is3d?'enable':'disable']();map.once('idle',()=>{{overlay();layers();}});map.once('style.load',()=>map.easeTo({{pitch:is3d?60:0,bearing:is3d?55:0,duration:700}}));}}
+document.getElementById('style').onchange=e=>change(e.target.value,e.target.selectedOptions[0].dataset.mode==='3d');document.getElementById('opacity').oninput=e=>{{lczOpacity=Number(e.target.value)/100;document.getElementById('opacity-value').textContent=e.target.value+'%';if(map.getLayer('lcz-fill'))map.setPaintProperty('lcz-fill','fill-opacity',['case',['==',['get','zcl_classe'],null],0,lczOpacity]);if(map.getLayer('lcz-line'))map.setPaintProperty('lcz-line','line-opacity',['case',['==',['get','zcl_classe'],null],0,Math.min(.7,lczOpacity+.1)]);}};document.getElementById('layer-button').onclick=()=>document.getElementById('layers').classList.toggle('open');document.getElementById('reset').onclick=()=>map.fitBounds(bounds(),{{padding:35,maxZoom:13,duration:500}});
+</script></body></html>'''
+    components.html(html, height=640, scrolling=False)
+
+
+def renderizar_aba_area():
+    """Estatísticas e gráfico de distribuição de área por classe LCZ."""
+    if st.session_state.lcz_area_stats is None:
+        with st.spinner("Calculando área por classe..."):
+            from utils.lcz4r import lcz_cal_area
+            resultado = lcz_cal_area(st.session_state.lcz_data, raster_path=st.session_state.lcz_raster_path)
+            st.session_state.lcz_area_stats = resultado['stats']
+            st.session_state.lcz_plot_data = resultado['plot_data']
+            st.session_state.lcz_area_summary = resultado['summary']
+
+    area_stats = st.session_state.lcz_area_stats
+    summary = st.session_state.lcz_area_summary
+
+    urbano = area_stats[area_stats['zcl_classe'].str.contains('LCZ [1-9]|LCZ 10')]['area_total_km2'].sum()
+    natural = area_stats[area_stats['zcl_classe'].str.contains('LCZ [A-G]')]['area_total_km2'].sum()
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Área total", f"{summary['total_area_km2']:.1f} km²")
+    col2.metric("Classe dominante", summary['classe_dominante'],
+                f"{summary['percentual_classe_dominante']:.1f}%")
+    col3.metric("Área construída (LCZ 1-10)", f"{urbano / summary['total_area_km2'] * 100:.0f}%",
+                help=f"{urbano:.1f} km² construídos vs. {natural:.1f} km² de cobertura de terreno (LCZ A-G)")
+
+    fig = px.bar(
+        area_stats.sort_values('area_total_km2', ascending=True),
+        x='area_total_km2', y='zcl_classe', orientation='h',
+        color='zcl_classe', color_discrete_map=CORES_LCZ,
+        labels={'area_total_km2': 'Área total (km²)', 'zcl_classe': 'Classe LCZ'},
+    )
+    fig.update_layout(showlegend=False, height=500, margin=dict(t=10))
+    st.plotly_chart(fig, use_container_width=True)
+
+    with st.expander("📋 Tabela e mais opções"):
+        st.dataframe(
+            area_stats[['zcl_classe', 'area_total_km2', 'percentual']].rename(columns={
+                'zcl_classe': 'Classe LCZ', 'area_total_km2': 'Área total (km²)', 'percentual': 'Percentual (%)',
+            }),
+            use_container_width=True, hide_index=True,
+        )
+        st.download_button("📊 Baixar dados (CSV)", area_stats.to_csv(index=False),
+                            f"lcz_area_{st.session_state.lcz_city_name}.csv", "text/csv")
+
+
+def _mapa_grade_media(array, titulo, colorscale, unidade):
+    """Heatmap Plotly leve (sem dependências extras) da média espacial de uma
+    grade (n_bandas, altura, largura), usada para LST e poluição do ar."""
+    media = np.nanmean(array, axis=0)
+    fig = go.Figure(go.Heatmap(z=media, colorscale=colorscale, colorbar_title=unidade))
+    fig.update_layout(title=titulo, height=420, yaxis=dict(scaleanchor='x'), margin=dict(t=40, b=10))
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False, autorange='reversed')
+    st.plotly_chart(fig, use_container_width=True)
+    return media
+
+
+def renderizar_aba_temperatura_superficie():
+    """Temperatura de Superfície (LST) por satélite — recorte da área do mapa."""
+    st.markdown(
+        "A **Temperatura de Superfície (LST)** é a temperatura que um satélite mede olhando para "
+        "o topo dos telhados, ruas e copas das árvores. É diferente da temperatura do ar que sentimos, "
+        "e costuma ser mais alta nas classes LCZ mais construídas e compactas."
+    )
+
+    if st.session_state.lcz_lst_result is None:
+        st.caption(
+            "Baixa 3 dias recentes de imagens de satélite (Sentinel-3) recortadas na área do mapa. "
+            "São poucos MB, mas pode levar 1-2 minutos (cada dia é baixado separadamente)."
+        )
+        if st.button("🌡️ Carregar temperatura de superfície"):
+            with st.spinner("Baixando imagens de satélite..."):
+                try:
+                    from utils.lcz4r import lcz_get_lst
+                    st.session_state.lcz_lst_result = lcz_get_lst(st.session_state.lcz_raster_path)
+                except Exception as e:
+                    st.error(f"Não foi possível baixar a temperatura de superfície: {e}")
+        return
+
+    resultado = st.session_state.lcz_lst_result
+    cidade = st.session_state.lcz_city_name or "Cidade"
+    media = _mapa_grade_media(
+        resultado.array, f"LST média ({resultado.dates[0]} a {resultado.dates[-1]}) — {cidade}",
+        colorscale="RdYlBu_r", unidade="°C",
+    )
+    col1, col2 = st.columns(2)
+    col1.metric("Área mais fria", f"{np.nanmin(media):.1f} °C")
+    col2.metric("Área mais quente", f"{np.nanmax(media):.1f} °C")
+    st.caption(
+        "Compare este mapa com a aba **Mapa**: as áreas mais quentes tendem a coincidir com classes "
+        "LCZ compactas (1-3) e as mais frias, com árvores e vegetação (A-D)."
     )
 
 
-def renderizar_feedback_usuario():
-    """Renderiza feedback persistente e status da sessão para o usuário."""
-    
-    # Mensagens de sucesso persistentes
-    if st.session_state.lcz_processing_success and st.session_state.lcz_success_message:
-        st.success(st.session_state.lcz_success_message)
-    
-    # Mensagens de erro persistentes
-    if st.session_state.lcz_error_message:
-        st.error(f"❌ **Último erro:** {st.session_state.lcz_error_message}")
-        
-        col1, col2 = st.columns([3, 1])
-        with col2:
-            if st.button("🗑️ Limpar Erro", help="Remove a mensagem de erro"):
-                st.session_state.lcz_error_message = ""
-                st.rerun()
-    
-    # Status da sessão (compacto)
-    if st.session_state.lcz_data is not None:
-        session_info = get_session_info()
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric(
-                "📊 Status", 
-                "Dados Carregados",
-                help=f"Cidade: {session_info['city_name']}"
-            )
-        
-        with col2:
-            st.metric(
-                "💾 Memória", 
-                f"{session_info['data_size_mb']:.1f} MB",
-                help="Uso de memória da sessão"
-            )
-        
-        with col3:
-            if session_info['last_update']:
-                from datetime import datetime
+def renderizar_aba_qualidade_ar():
+    """Qualidade do ar (PM2.5/O3/CO) — grade anual recortada na área do mapa."""
+    st.markdown(
+        "Zonas com mais construções e tráfego tendem a concentrar mais poluentes do ar. "
+        "O **PM2.5** (partículas finas) é o poluente mais associado a problemas respiratórios."
+    )
+
+    poluente_label = st.radio(
+        "Poluente", ["PM2.5", "Ozônio (O₃)", "Monóxido de carbono (CO)"], horizontal=True,
+    )
+    poluente = {"PM2.5": "pm25", "Ozônio (O₃)": "o3", "Monóxido de carbono (CO)": "co"}[poluente_label]
+
+    if st.session_state.lcz_pollution_result is None or st.session_state.lcz_pollution_poluente != poluente:
+        st.caption("Baixa 1 grade anual (dataset GHAP, sem necessidade de conta/API key) recortada na área do mapa.")
+        if st.button("🏭 Carregar qualidade do ar"):
+            with st.spinner("Baixando grade de poluição..."):
                 try:
-                    if isinstance(session_info['last_update'], str):
-                        last_update = datetime.fromisoformat(session_info['last_update'])
-                    else:
-                        last_update = session_info['last_update']
-                    
-                    time_diff = datetime.now() - last_update
-                    if time_diff.seconds < 60:
-                        time_str = "Agora"
-                    elif time_diff.seconds < 3600:
-                        time_str = f"{time_diff.seconds//60}min"
-                    else:
-                        time_str = f"{time_diff.seconds//3600}h"
-                    
-                    st.metric("🕒 Atualizado", time_str, help="Última atualização dos dados")
-                except:
-                    st.metric("🕒 Atualizado", "N/A")
-            else:
-                st.metric("🕒 Atualizado", "N/A")
-        
-        with col4:
-            st.metric(
-                "🆔 Sessão", 
-                session_info['session_id'],
-                help="ID único da sessão atual"
-            )
-
-
-def renderizar_secoes_analise():
-    """Renderiza as seções de análise quando há dados disponíveis."""
-    
-    try:
-        # 1. Visualização interativa (Plotly)
-        st.markdown("---")
-        st.markdown("## 🎨 Visualizar LCZ Map")
-        
-        try:
-            renderizar_secao_visualizacao()
-        except Exception as e:
-            st.error(f"❌ Erro na visualização: {str(e)}")
-            if st.button("🔄 Tentar Novamente - Visualização"):
-                st.rerun()
-        
-        # 2. Análise de área
-        st.markdown("---")
-        st.markdown("## 📊 Análise de Área por Classe LCZ")
-        
-        try:
-            renderizar_secao_calculo_area()
-        except Exception as e:
-            st.error(f"❌ Erro na análise de área: {str(e)}")
-            # Limpar dados corrompidos de área
-            st.session_state.lcz_area_stats = None
-            st.session_state.lcz_plot_data = None
-            st.session_state.lcz_area_summary = None
-            
-            if st.button("🔄 Recalcular Análise de Área"):
-                st.rerun()
-        
-        # 3. Mapa interativo Folium
-        st.markdown("---")
-        st.markdown("## 🗺️ Mapa Interativo")
-        
-        try:
-            renderizar_mapa_folium()
-        except Exception as e:
-            st.error(f"❌ Erro no mapa interativo: {str(e)}")
-            if st.button("🔄 Recarregar Mapa Interativo"):
-                st.rerun()
-                
-    except Exception as e:
-        st.error(f"❌ Erro nas seções de análise: {str(e)}")
-
-
-def renderizar_instrucoes_iniciais():
-    """Renderiza instruções quando não há dados carregados."""
-    
-    st.info("ℹ️ **Bem-vindo ao Módulo Explorar!** Gere um mapa LCZ primeiro para acessar todas as funcionalidades.")
-    
-    with st.expander("📖 Guia Rápido de Uso", expanded=True):
-        st.markdown("""
-        ### 🚀 Primeiros Passos
-        
-        1. **Digite o nome de uma cidade** no campo acima
-        2. **Clique em "Gerar Mapa LCZ"** para processar os dados
-        3. **Aguarde o processamento** (pode levar alguns minutos)
-        4. **Explore as visualizações** que aparecerão automaticamente
-        
-        ### 💡 Dicas Importantes
-        
-        - **Nomes de cidades:** Use nomes completos como "São Paulo, Brazil" ou "New York, USA"
-        - **Conexão:** Certifique-se de ter uma conexão estável com a internet
-        - **Paciência:** O processamento pode levar 2-5 minutos dependendo do tamanho da cidade
-        - **Memória:** Cidades muito grandes podem usar mais memória
-        
-        ### 🌍 Exemplos de Cidades Testadas
-        
-        - São Paulo, Brazil
-        - Rio de Janeiro, Brazil
-        - New York, USA
-        - London, UK
-        - Tokyo, Japan
-        - Paris, France
-        """)
-
-
-def renderizar_secao_ajuda():
-    """Renderiza seção de ajuda e instruções finais."""
-    
-    st.markdown("---")
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.markdown("""
-        ### 💡 Como Usar o Módulo Explorar
-        
-        1. **🚀 Gere um Mapa:** Use o gerador LCZ4r para criar um mapa para sua cidade de interesse
-        2. **🎨 Visualize:** Veja o mapa em um gráfico interativo (zoom/pan) com legenda de classes
-        3. **📊 Analise:** Explore a distribuição de áreas por classe LCZ com gráficos interativos
-        4. **🗺️ Explore:** Interaja com o mapa usando a interface Folium
-        5. **➡️ Próximo passo:** Vá para "Investigar" para análises detalhadas ou "Simular" para testar intervenções
-        """)
-    
-    with col2:
-        st.markdown("### 🆘 Precisa de Ajuda?")
-        
-        if st.button("🔄 Reiniciar Módulo", help="Limpa todos os dados e reinicia"):
-            clear_lcz_session_data()
-            st.success("✅ Módulo reiniciado!")
-            st.rerun()
-        
-        if st.button("📊 Ver Status da Sessão", help="Mostra informações técnicas"):
-            info = get_session_info()
-            st.json(info)
-        
-        with st.expander("❓ FAQ"):
-            st.markdown("""
-            **P: O processamento está muito lento?**
-            R: Isso é normal. Aguarde alguns minutos.
-            
-            **P: Erro de conexão?**
-            R: Verifique sua internet e tente novamente.
-            
-            **P: Cidade não encontrada?**
-            R: Tente usar o nome completo com país.
-            
-            **P: Como limpar os dados?**
-            R: Use o botão "Limpar Dados" ou "Reiniciar Módulo".
-            """)
-
-
-def renderizar_debug_sessao():
-    """Renderiza informações de debug da sessão (apenas para desenvolvimento)."""
-    
-    st.sidebar.markdown("### 🔧 Debug da Sessão")
-    
-    info = get_session_info()
-    
-    st.sidebar.json(info)
-    
-    if st.sidebar.button("🗑️ Limpar Sessão Debug"):
-        clear_lcz_session_data()
-        st.sidebar.success("Sessão limpa!")
-    
-    # Validação em tempo real
-    if st.session_state.lcz_data is not None:
-        from utils.lcz4r import validate_lcz_data
-        validation = validate_lcz_data(st.session_state.lcz_data)
-        
-        st.sidebar.markdown("**Validação:**")
-        if validation['valid']:
-            st.sidebar.success("✅ Dados válidos")
-        else:
-            st.sidebar.error("❌ Dados inválidos")
-        
-        if validation['warnings']:
-            st.sidebar.warning(f"⚠️ {len(validation['warnings'])} avisos")
-        
-        if validation['errors']:
-            st.sidebar.error(f"❌ {len(validation['errors'])} erros")
-
-def renderizar_gerador_lcz():
-    """Renderiza a seção do gerador de mapas LCZ."""
-    
-    with st.expander("🔧 Gerar Novo Mapa LCZ", expanded=not st.session_state.lcz_processing_success):
-        st.markdown("""
-        **LCZ4r** é uma ferramenta avançada para processamento de Zonas Climáticas Locais que permite:
-        
-        - 🌍 Gerar mapas LCZ para qualquer cidade do mundo
-        - 📊 Processar dados de alta resolução automaticamente  
-        - 🗺️ Visualizar resultados de forma interativa
-        - 💾 Salvar dados na sessão para análises futuras
-        """)
-        
-        # Interface de entrada
-        col1, col2, col3 = st.columns([3, 1, 1])
-        
-        with col1:
-            cidade_nome = st.text_input(
-                "🏙️ Nome da Cidade:",
-                placeholder="Ex: São Paulo, New York, London, Tokyo...",
-                help="Digite o nome da cidade para gerar o mapa LCZ",
-                value=st.session_state.lcz_city_name or ""
-            )
-        
-        with col2:
-            gerar_mapa = st.button("🚀 Gerar Mapa LCZ", type="primary", use_container_width=True)
-        
-        with col3:
-            if st.button("🗑️ Limpar Dados", use_container_width=True):
-                clear_lcz_session_data()
-                st.rerun()
-        
-        # Processamento do mapa
-        if gerar_mapa and cidade_nome:
-            processar_mapa_lcz(cidade_nome)
-
-def processar_mapa_lcz(cidade_nome):
-    """
-    Processa e gera o mapa LCZ para a cidade especificada com tratamento robusto de erros.
-    Utiliza o sistema aprimorado de gerenciamento de sessão.
-    """
-    
-    # Limpar dados anteriores
-    clear_lcz_session_data()
-    
-    # Barra de progresso e status
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    error_container = st.empty()
-    
-    try:
-        # Etapa 1: Validação inicial
-        status_text.text("🔍 Validando entrada...")
-        progress_bar.progress(10)
-        
-        if not cidade_nome or len(cidade_nome.strip()) < 2:
-            raise ValueError("Nome da cidade deve ter pelo menos 2 caracteres")
-        
-        cidade_nome = cidade_nome.strip()
-        
-        # Etapa 2: Geocodificação
-        status_text.text("📡 Conectando ao serviço de geocodificação...")
-        progress_bar.progress(25)
-        
-        # Etapa 3: Download dos dados LCZ
-        status_text.text("🌍 Baixando dados LCZ globais...")
-        progress_bar.progress(45)
-        
-        # Importar exceções personalizadas
-        from utils.lcz4r import GeocodeError, DataProcessingError
-        
-        data, profile, cached_raster_path = lcz_get_map(cidade_nome, isave_map=True, return_path=True)
-        
-        # Etapa 4: Processamento vetorial
-        status_text.text("⚙️ Processando dados LCZ...")
-        progress_bar.progress(65)
-        
-        lcz_gdf = process_lcz_map(data, profile)
-        
-        # Etapa 5: Aprimoramento dos dados
-        status_text.text("✨ Aprimorando dados...")
-        progress_bar.progress(80)
-        
-        enhanced_gdf = enhance_lcz_data(lcz_gdf)
-        
-        # Etapa 6: Validação dos dados processados
-        status_text.text("🔍 Validando dados processados...")
-        progress_bar.progress(90)
-        
-        from utils.lcz4r import validate_lcz_data
-        validation_result = validate_lcz_data(enhanced_gdf)
-        
-        if not validation_result['valid']:
-            raise DataProcessingError(f"Dados inválidos: {'; '.join(validation_result['errors'])}")
-        
-        # Etapa 7: Salvamento na sessão
-        status_text.text("💾 Salvando na sessão...")
-        progress_bar.progress(95)
-        
-        # Usar função aprimorada de salvamento — usa o caminho em cache do LCZ4py
-        # (chaveado por conteúdo da área, seguro para cidades/usuários concorrentes),
-        # não o arquivo fixo de isave_map (que é sobrescrito a cada geração)
-        success = save_lcz_data_to_session(data, profile, cidade_nome, enhanced_gdf, raster_path=cached_raster_path)
-        
-        if not success:
-            raise Exception("Falha ao salvar dados na sessão")
-        
-        # Salvar resultado da validação
-        st.session_state.lcz_validation_result = validation_result
-        
-        # Etapa 8: Finalização
-        progress_bar.progress(100)
-        status_text.text("✅ Processamento concluído!")
-        
-        # Exibir métricas de sucesso
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Classes LCZ", len(enhanced_gdf['zcl_classe'].unique()))
-        with col2:
-            st.metric("Polígonos", len(enhanced_gdf))
-        with col3:
-            area_total = enhanced_gdf['area_km2'].sum() if 'area_km2' in enhanced_gdf.columns else 0
-            st.metric("Área Total", f"{area_total:.1f} km²")
-        with col4:
-            st.metric("Tamanho", f"{st.session_state.lcz_data_size_mb:.1f} MB")
-        
-        # Exibir avisos de validação se houver
-        if validation_result['warnings']:
-            with st.expander("⚠️ Avisos de Validação", expanded=False):
-                for warning in validation_result['warnings']:
-                    st.warning(f"⚠️ {warning}")
-        
-        # Aguardar um pouco para mostrar o progresso completo
-        time.sleep(1)
-        
-        # Forçar rerun para atualizar as seções
-        st.rerun()
-        
-    except GeocodeError as e:
-        progress_bar.progress(0)
-        status_text.text("")
-        error_container.error(f"🌐 **Erro de Geocodificação:** {str(e)}")
-        
-        with error_container.expander("💡 Dicas para resolver problemas de geocodificação"):
-            st.markdown("""
-            **Sugestões para melhorar a busca:**
-            - Tente usar o nome completo da cidade: "São Paulo, Brazil"
-            - Use nomes em inglês quando possível: "Rio de Janeiro, Brazil"
-            - Verifique a ortografia do nome da cidade
-            - Tente variações do nome (ex: "NYC" → "New York City")
-            - Para cidades pequenas, adicione o estado/província
-            """)
-        
-        st.session_state.lcz_error_message = str(e)
-        
-    except DataProcessingError as e:
-        progress_bar.progress(0)
-        status_text.text("")
-        error_container.error(f"📊 **Erro no Processamento:** {str(e)}")
-        
-        with error_container.expander("💡 Possíveis soluções"):
-            st.markdown("""
-            **Problemas comuns e soluções:**
-            - **Área fora de cobertura:** Verifique se a cidade está na cobertura global do LCZ
-            - **Dados insuficientes:** Tente uma área metropolitana maior
-            - **Nome incorreto:** Confirme se o nome da cidade está correto
-            - **Região muito pequena:** LCZ funciona melhor com áreas urbanas maiores
-            """)
-        
-        st.session_state.lcz_error_message = str(e)
-        
-    except ConnectionError as e:
-        progress_bar.progress(0)
-        status_text.text("")
-        error_container.error(f"🌐 **Erro de Conexão:** {str(e)}")
-        
-        with error_container.expander("💡 Dicas para resolver problemas de conexão"):
-            st.markdown("""
-            **Soluções para problemas de rede:**
-            - Verifique sua conexão com a internet
-            - Tente novamente em alguns minutos
-            - Verifique se não há firewall bloqueando o acesso
-            - Se o problema persistir, o serviço pode estar temporariamente indisponível
-            """)
-        
-        st.session_state.lcz_error_message = str(e)
-        
-    except Exception as e:
-        progress_bar.progress(0)
-        status_text.text("")
-        error_container.error(f"❌ **Erro Inesperado:** {str(e)}")
-        
-        with error_container.expander("🔧 Informações técnicas"):
-            st.code(f"Tipo do erro: {type(e).__name__}\nDetalhes: {str(e)}")
-            st.markdown("""
-            **Se o problema persistir:**
-            - Tente limpar os dados da sessão e gerar novamente
-            - Verifique se o nome da cidade está correto
-            - Tente uma cidade diferente para testar o sistema
-            """)
-        
-        st.session_state.lcz_error_message = str(e)
-    
-    finally:
-        # Sempre limpar elementos temporários
-        if 'progress_bar' in locals():
-            progress_bar.empty()
-        if 'status_text' in locals():
-            status_text.empty()
-
-def renderizar_secao_visualizacao():
-    """Renderiza a seção de visualização interativa (Plotly, via LCZ4py)."""
-
-    st.markdown("### ⚙️ Configurações de Visualização")
-
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        titulo_personalizado = st.text_input(
-            "🏷️ Título do Mapa (opcional):",
-            placeholder=f"Ex: Zonas Climáticas Locais - {st.session_state.lcz_city_name or 'Cidade'}",
-            help="Deixe em branco para usar o título padrão"
-        )
-
-    with col2:
-        alta_resolucao = st.checkbox(
-            "📸 Exportação em Alta Resolução",
-            value=True,
-            help="Usa dimensões maiores ao gerar o PNG para download (o mapa na tela é sempre interativo)"
-        )
-
-    # Botão para gerar visualização
-    if st.button("🎨 Gerar Visualização", type="primary", use_container_width=True):
-        gerar_visualizacao_interativa(titulo_personalizado, alta_resolucao)
-
-def gerar_visualizacao_interativa(titulo_personalizado=None, alta_resolucao=True):
-    """Gera visualização interativa (Plotly/WebGL) usando lcz_plot_map do LCZ4py."""
-
-    with st.spinner("Gerando visualização interativa..."):
-        try:
-            # Usar dados da sessão
-            data = st.session_state.lcz_raster_data
-            profile = st.session_state.lcz_raster_profile
-
-            if data is None or profile is None:
-                st.error("❌ Dados raster não encontrados na sessão. Gere um mapa primeiro.")
-                return
-
-            # Configurar título
-            cidade = st.session_state.lcz_city_name or "Cidade"
-            titulo = titulo_personalizado if titulo_personalizado else f"Mapa de Zonas Climáticas Locais - {cidade}"
-
-            # Gerar visualização usando lcz_plot_map (retorna uma figura Plotly)
-            resultado = lcz_plot_map(
-                (data, profile),
-                title=titulo,
-                show_legend=True,
-                isave=False
-            )
-            fig = resultado.fig
-
-            # Exibir o gráfico interativo (zoom/pan reais, ao contrário do PNG estático anterior)
-            st.markdown("#### 🖼️ Visualização Gerada")
-            st.plotly_chart(fig, use_container_width=True)
-
-            # Botões de download
-            col1, col2 = st.columns(2)
-
-            with col1:
-                # Exportar como PNG (via kaleido) para quem precisa de uma imagem estática
-                escala = 3 if alta_resolucao else 1
-                png_data = fig.to_image(format="png", scale=escala)
-                st.download_button(
-                    label="📸 Baixar Imagem PNG",
-                    data=png_data,
-                    file_name=f"lcz_map_{st.session_state.lcz_city_name or 'cidade'}.png",
-                    mime="image/png",
-                    help="Imagem estática do mapa LCZ para documentos/apresentações",
-                    use_container_width=True
-                )
-
-            with col2:
-                # Download do GeoJSON
-                if st.session_state.lcz_data is not None:
-                    geojson_data = st.session_state.lcz_data.to_json()
-                    st.download_button(
-                        label="🗺️ Baixar GeoJSON",
-                        data=geojson_data,
-                        file_name=f"lcz_data_{st.session_state.lcz_city_name or 'cidade'}.geojson",
-                        mime="application/json",
-                        help="Dados vetoriais do mapa LCZ",
-                        use_container_width=True
+                    from utils.lcz4r import lcz_grid_poluicao
+                    st.session_state.lcz_pollution_result = lcz_grid_poluicao(
+                        st.session_state.lcz_raster_path, poluente=poluente
                     )
-
-            st.success("✅ Visualização gerada com sucesso!")
-
-        except Exception as e:
-            st.error(f"❌ Erro ao gerar visualização: {str(e)}")
-
-def renderizar_secao_calculo_area():
-    """
-    Renderiza a seção de cálculo de área com análise avançada usando lcz_cal_area.
-    Inclui gráficos Plotly interativos, relatórios e estatísticas detalhadas.
-    """
-    
-    if st.session_state.lcz_data is None:
-        st.warning("⚠️ Dados LCZ não encontrados na sessão.")
+                    st.session_state.lcz_pollution_poluente = poluente
+                except Exception as e:
+                    st.error(f"Não foi possível baixar a qualidade do ar: {e}")
         return
-    
-    try:
-        # Verificar se já temos dados de área calculados na sessão
-        if st.session_state.lcz_area_stats is None or st.session_state.lcz_plot_data is None:
-            with st.spinner("Calculando estatísticas de área..."):
-                from utils.lcz4r import lcz_cal_area
-                result = lcz_cal_area(
-                    st.session_state.lcz_data,
-                    raster_path=st.session_state.get('lcz_raster_path')
-                )
-                st.session_state.lcz_area_stats = result['stats']
-                st.session_state.lcz_plot_data = result['plot_data']
-                st.session_state.lcz_area_summary = result['summary']
-        
-        # Usar dados da sessão
-        area_stats = st.session_state.lcz_area_stats
-        plot_data = st.session_state.lcz_plot_data
-        summary = st.session_state.lcz_area_summary
-        
-        # Exibir resumo geral
-        st.markdown("### 📈 Resumo Geral")
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric(
-                "Área Total", 
-                f"{summary['total_area_km2']:.1f} km²",
-                help="Área total coberta pelo mapa LCZ"
-            )
-        
-        with col2:
-            st.metric(
-                "Classes LCZ", 
-                summary['num_classes'],
-                help="Número de diferentes classes LCZ presentes"
-            )
-        
-        with col3:
-            st.metric(
-                "Polígonos", 
-                summary['num_total_poligonos'],
-                help="Número total de polígonos no mapa"
-            )
-        
-        with col4:
-            st.metric(
-                "Classe Dominante", 
-                summary['classe_dominante'],
-                f"{summary['percentual_classe_dominante']:.1f}%",
-                help="Classe LCZ com maior área"
-            )
-        
-        # Interface de controle para visualização
-        st.markdown("### ⚙️ Configurações de Visualização")
-        
-        col1, col2, col3 = st.columns([2, 1, 1])
-        
-        with col1:
-            tipo_grafico = st.selectbox(
-                "📊 Tipo de Gráfico:",
-                ["bar", "pie", "donut", "treemap"],
-                format_func=lambda x: {
-                    "bar": "📊 Gráfico de Barras", 
-                    "pie": "🥧 Gráfico de Pizza", 
-                    "donut": "🍩 Gráfico Donut",
-                    "treemap": "🗂️ Mapa de Árvore"
-                }[x],
-                help="Escolha o tipo de visualização para a distribuição de áreas"
-            )
-        
-        with col2:
-            mostrar_tabela = st.checkbox("📋 Mostrar Tabela", value=True)
-        
-        with col3:
-            mostrar_relatorio = st.checkbox("📄 Gerar Relatório", value=False)
-        
-        # Botões de ação
+
+    resultado = st.session_state.lcz_pollution_result
+    cidade = st.session_state.lcz_city_name or "Cidade"
+    unidade = "µg/m³" if poluente == "pm25" else "ppb"
+    media = _mapa_grade_media(
+        resultado.array, f"{poluente_label} — média anual — {cidade}", colorscale="Reds", unidade=unidade,
+    )
+
+    if poluente == "pm25":
+        media_cidade = float(np.nanmean(media))
         col1, col2 = st.columns(2)
-        
-        with col1:
-            gerar_analise = st.button("📊 Gerar Análise Completa", type="primary", use_container_width=True)
-        
-        with col2:
-            recalcular = st.button("🔄 Recalcular Áreas", use_container_width=True)
-        
-        # Recalcular se solicitado
-        if recalcular:
-            st.session_state.lcz_area_stats = None
-            st.session_state.lcz_plot_data = None
-            st.session_state.lcz_area_summary = None
-            st.rerun()
-        
-        # Gerar análise completa
-        if gerar_analise:
-            gerar_analise_area_completa(area_stats, plot_data, summary, tipo_grafico, mostrar_tabela, mostrar_relatorio)
-            
-    except Exception as e:
-        st.error(f"❌ Erro na análise de área: {str(e)}")
-        # Limpar dados corrompidos
-        st.session_state.lcz_area_stats = None
-        st.session_state.lcz_plot_data = None
-        st.session_state.lcz_area_summary = None
-
-
-def gerar_analise_area_completa(area_stats, plot_data, summary, tipo_grafico, mostrar_tabela, mostrar_relatorio):
-    """
-    Gera análise completa de área com gráficos interativos, tabelas e relatórios.
-    """
-    
-    try:
-        st.markdown("### 📊 Análise de Distribuição de Área")
-        
-        # Gerar gráfico principal
-        fig = criar_grafico_area_plotly(area_stats, plot_data, tipo_grafico)
-        
-        if fig:
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Salvar gráfico para download
-            import plotly.io as pio
-            img_bytes = pio.to_image(fig, format="png", width=1200, height=800, scale=2)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.download_button(
-                    label="📸 Baixar Gráfico PNG",
-                    data=img_bytes,
-                    file_name=f"lcz_area_analysis_{st.session_state.lcz_city_name or 'cidade'}.png",
-                    mime="image/png",
-                    help="Baixar gráfico de análise de área em alta resolução"
-                )
-            
-            with col2:
-                # Download dos dados em CSV
-                csv_data = area_stats.to_csv(index=False)
-                st.download_button(
-                    label="📊 Baixar Dados CSV",
-                    data=csv_data,
-                    file_name=f"lcz_area_stats_{st.session_state.lcz_city_name or 'cidade'}.csv",
-                    mime="text/csv",
-                    help="Baixar estatísticas de área em formato CSV"
-                )
-        
-        # Mostrar tabela detalhada se solicitado
-        if mostrar_tabela:
-            st.markdown("### 📋 Tabela Detalhada de Estatísticas")
-            
-            # Formatar tabela para melhor visualização
-            area_stats_display = area_stats.copy()
-            area_stats_display['area_total_km2'] = area_stats_display['area_total_km2'].round(2)
-            area_stats_display['area_media_km2'] = area_stats_display['area_media_km2'].round(3)
-            area_stats_display['percentual'] = area_stats_display['percentual'].round(1)
-            
-            st.dataframe(
-                area_stats_display,
-                use_container_width=True,
-                column_config={
-                    "zcl_classe": "Classe LCZ",
-                    "area_total_km2": st.column_config.NumberColumn(
-                        "Área Total (km²)",
-                        format="%.2f"
-                    ),
-                    "num_poligonos": "Polígonos",
-                    "area_media_km2": st.column_config.NumberColumn(
-                        "Área Média (km²)",
-                        format="%.3f"
-                    ),
-                    "percentual": st.column_config.NumberColumn(
-                        "Percentual (%)",
-                        format="%.1f%%"
-                    )
-                }
+        col1.metric("Média da área", f"{media_cidade:.1f} µg/m³")
+        col2.metric("Limite anual recomendado pela OMS", "5 µg/m³")
+        if media_cidade > 5:
+            st.caption(
+                f"A média da área está **{media_cidade / 5:.1f}x acima** do limite anual recomendado "
+                "pela Organização Mundial da Saúde (5 µg/m³)."
             )
-        
-        # Gerar relatório se solicitado
-        if mostrar_relatorio:
-            st.markdown("### 📄 Relatório de Análise LCZ")
-            
-            from utils.lcz4r import lcz_area_analysis_report
-            relatorio = lcz_area_analysis_report(st.session_state.lcz_data, st.session_state.lcz_city_name)
-            
-            st.text_area(
-                "Relatório Completo:",
-                value=relatorio,
-                height=400,
-                help="Relatório detalhado da análise de área LCZ"
-            )
-            
-            # Download do relatório
-            st.download_button(
-                label="📄 Baixar Relatório TXT",
-                data=relatorio,
-                file_name=f"relatorio_lcz_{st.session_state.lcz_city_name or 'cidade'}.txt",
-                mime="text/plain",
-                help="Baixar relatório completo em formato texto"
-            )
-        
-        # Análise adicional
-        st.markdown("### 🔍 Análise Adicional")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Análise urbano vs natural
-            urbano_mask = area_stats['zcl_classe'].str.contains('LCZ [1-9]|LCZ 10')
-            natural_mask = area_stats['zcl_classe'].str.contains('LCZ [A-G]')
-            
-            area_urbana = area_stats[urbano_mask]['area_total_km2'].sum()
-            area_natural = area_stats[natural_mask]['area_total_km2'].sum()
-            
-            st.metric(
-                "Área com Tipos Construídos (LCZ 1-10)",
-                f"{area_urbana:.1f} km²",
-                f"{(area_urbana/summary['total_area_km2']*100):.1f}%"
-            )
-
-            st.metric(
-                "Área com Tipos de Cobertura de Terreno (LCZ A-G)",
-                f"{area_natural:.1f} km²",
-                f"{(area_natural/summary['total_area_km2']*100):.1f}%",
-                help="Inclui vegetação (A-D), mas também solo exposto, pavimento e água (E-G) — nem tudo aqui é 'natureza'."
-            )
-
-        with col2:
-            # Fragmentação e densidade
-            fragmentacao = summary['num_total_poligonos'] / summary['total_area_km2']
-
-            st.metric(
-                "Densidade de Polígonos",
-                f"{fragmentacao:.2f} pol/km²",
-                help="Número de polígonos por km² no mapa vetorizado. Reflete principalmente a resolução da grade LCZ (~100 m), não necessariamente a fragmentação real da paisagem — use com cautela para conclusões sobre conectividade urbana."
-            )
-            
-            # Classe mais fragmentada
-            area_stats['fragmentacao'] = area_stats['num_poligonos'] / area_stats['area_total_km2']
-            classe_fragmentada = area_stats.loc[area_stats['fragmentacao'].idxmax(), 'zcl_classe']
-            
-            st.metric(
-                "Classe com Maior Densidade de Polígonos",
-                classe_fragmentada,
-                f"{area_stats['fragmentacao'].max():.2f} pol/km²"
-            )
-        
-        st.success("✅ Análise de área gerada com sucesso!")
-        
-    except Exception as e:
-        st.error(f"❌ Erro ao gerar análise: {str(e)}")
-
-
-def criar_grafico_area_plotly(area_stats, plot_data, tipo_grafico):
-    """
-    Cria gráfico Plotly baseado no tipo selecionado.
-    """
-    
-    try:
-        cores_lcz = plot_data['cores_lcz']
-        colors = [cores_lcz.get(classe, '#808080') for classe in area_stats['zcl_classe']]
-        
-        cidade_nome = st.session_state.lcz_city_name or 'Cidade'
-        
-        if tipo_grafico == "bar":
-            fig = px.bar(
-                area_stats, 
-                x='zcl_classe', 
-                y='area_total_km2',
-                title=f"Distribuição de Área por Classe LCZ - {cidade_nome}",
-                color='zcl_classe',
-                color_discrete_map=cores_lcz,
-                hover_data=['num_poligonos', 'area_media_km2', 'percentual'],
-                labels={
-                    'area_total_km2': 'Área Total (km²)',
-                    'zcl_classe': 'Classe LCZ',
-                    'num_poligonos': 'Número de Polígonos',
-                    'area_media_km2': 'Área Média (km²)',
-                    'percentual': 'Percentual (%)'
-                }
-            )
-            fig.update_layout(showlegend=False, xaxis_tickangle=-45)
-            
-        elif tipo_grafico == "pie":
-            fig = px.pie(
-                area_stats,
-                values='area_total_km2',
-                names='zcl_classe',
-                title=f"Distribuição Percentual de Área por Classe LCZ - {cidade_nome}",
-                color='zcl_classe',
-                color_discrete_map=cores_lcz,
-                hover_data=['num_poligonos']
-            )
-            
-        elif tipo_grafico == "donut":
-            fig = go.Figure(data=[go.Pie(
-                labels=area_stats['zcl_classe'],
-                values=area_stats['area_total_km2'],
-                hole=0.4,
-                marker_colors=colors,
-                hovertemplate='<b>%{label}</b><br>' +
-                             'Área: %{value:.2f} km²<br>' +
-                             'Percentual: %{percent}<br>' +
-                             '<extra></extra>'
-            )])
-            
-            fig.update_layout(
-                title=f"Distribuição de Área LCZ (Donut) - {cidade_nome}",
-                annotations=[dict(text='LCZ', x=0.5, y=0.5, font_size=20, showarrow=False)]
-            )
-            
-        elif tipo_grafico == "treemap":
-            fig = px.treemap(
-                area_stats,
-                path=['zcl_classe'],
-                values='area_total_km2',
-                title=f"Mapa de Árvore - Distribuição LCZ - {cidade_nome}",
-                color='zcl_classe',
-                color_discrete_map=cores_lcz,
-                hover_data=['num_poligonos', 'percentual']
-            )
-        
-        # Configurações gerais
-        fig.update_layout(
-            font=dict(size=12),
-            title_font_size=16,
-            height=600
-        )
-        
-        return fig
-        
-    except Exception as e:
-        st.error(f"❌ Erro ao criar gráfico: {str(e)}")
-        return None
-
-def gerar_grafico_area_plotly(area_stats, tipo_grafico, mostrar_tabela):
-    """Gera gráficos interativos de área usando Plotly."""
-    
-    try:
-        # Preparar dados
-        classes = area_stats['Classe LCZ']
-        areas = area_stats['Área Total (km²)']
-        
-        # Cores LCZ padrão
-        cores_lcz = {
-            'LCZ 1': '#910613', 'LCZ 2': '#D9081C', 'LCZ 3': '#FF0A22', 'LCZ 4': '#C54F1E',
-            'LCZ 5': '#FF6628', 'LCZ 6': '#FF985E', 'LCZ 7': '#FDED3F', 'LCZ 8': '#BBBBBB',
-            'LCZ 9': '#FFCBAB', 'LCZ 10': '#565656', 'LCZ A': '#006A18', 'LCZ B': '#00A926',
-            'LCZ C': '#628432', 'LCZ D': '#B5DA7F', 'LCZ E': '#000000', 'LCZ F': '#FCF7B1',
-            'LCZ G': '#656BFA'
-        }
-        
-        colors = [cores_lcz.get(classe, '#808080') for classe in classes]
-        
-        # Criar gráfico baseado no tipo selecionado
-        if tipo_grafico == "bar":
-            fig = px.bar(
-                area_stats, 
-                x='Classe LCZ', 
-                y='Área Total (km²)',
-                title=f"Distribuição de Área por Classe LCZ - {st.session_state.lcz_city_name or 'Cidade'}",
-                color='Classe LCZ',
-                color_discrete_map=cores_lcz,
-                hover_data=['Número de Polígonos', 'Área Média (km²)']
-            )
-            fig.update_layout(showlegend=False, xaxis_tickangle=-45)
-            
-        elif tipo_grafico == "pie":
-            fig = px.pie(
-                area_stats,
-                values='Área Total (km²)',
-                names='Classe LCZ',
-                title=f"Distribuição Percentual de Área por Classe LCZ - {st.session_state.lcz_city_name or 'Cidade'}",
-                color='Classe LCZ',
-                color_discrete_map=cores_lcz
-            )
-            
-        elif tipo_grafico == "donut":
-            fig = go.Figure(data=[go.Pie(
-                labels=classes,
-                values=areas,
-                hole=0.4,
-                marker_colors=colors,
-                hovertemplate='<b>%{label}</b><br>Área: %{value:.2f} km²<br>Percentual: %{percent}<extra></extra>'
-            )])
-            fig.update_layout(
-                title=f"Distribuição de Área por Classe LCZ - {st.session_state.lcz_city_name or 'Cidade'}",
-                annotations=[dict(text='LCZ', x=0.5, y=0.5, font_size=20, showarrow=False)]
-            )
-        
-        # Configurações gerais do layout
-        fig.update_layout(
-            height=600,
-            font=dict(size=12),
-            title_font_size=16,
-            margin=dict(t=80, b=40, l=40, r=40)
-        )
-        
-        # Exibir gráfico
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Exibir tabela se solicitado
-        if mostrar_tabela:
-            st.markdown("#### 📋 Tabela Detalhada")
-            
-            # Adicionar percentuais
-            area_stats_display = area_stats.copy()
-            area_stats_display['Percentual (%)'] = (area_stats_display['Área Total (km²)'] / area_stats_display['Área Total (km²)'].sum() * 100).round(2)
-            
-            st.dataframe(
-                area_stats_display,
-                use_container_width=True,
-                hide_index=True
-            )
-        
-        # Botões de download
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Download da tabela CSV
-            csv_data = area_stats.to_csv(index=False)
-            st.download_button(
-                label="📊 Baixar Dados CSV",
-                data=csv_data,
-                file_name=f"lcz_area_analysis_{st.session_state.lcz_city_name or 'cidade'}.csv",
-                mime="text/csv",
-                help="Baixar dados de área em formato CSV",
-                use_container_width=True
-            )
-        
-        with col2:
-            # Download do gráfico HTML
-            html_data = fig.to_html()
-            st.download_button(
-                label="📈 Baixar Gráfico HTML",
-                data=html_data,
-                file_name=f"lcz_area_chart_{st.session_state.lcz_city_name or 'cidade'}.html",
-                mime="text/html",
-                help="Baixar gráfico interativo em HTML",
-                use_container_width=True
-            )
-        
-        st.success("✅ Análise de área gerada com sucesso!")
-        
-    except Exception as e:
-        st.error(f"❌ Erro ao gerar análise de área: {str(e)}")
-
-def renderizar_mapa_folium():
-    """Renderiza o mapa interativo com Folium usando dados da sessão."""
-    
-    try:
-        # Usar dados da sessão
-        gdf_lcz = st.session_state.lcz_data
-        
-        if gdf_lcz is None or gdf_lcz.empty:
-            st.warning("⚠️ Dados LCZ não encontrados na sessão.")
-            return
-        
-        # Calcular centro do mapa
-        bounds = gdf_lcz.total_bounds
-        center_lat = (bounds[1] + bounds[3]) / 2
-        center_lon = (bounds[0] + bounds[2]) / 2
-        
-        # Criar mapa base
-        m = folium.Map(
-            location=[center_lat, center_lon],
-            zoom_start=11,
-            tiles='OpenStreetMap'
-        )
-        
-        # Definir cores para as classes LCZ
-        cores_lcz = {
-            'LCZ 1':  '#910613',  'LCZ 2':  '#D9081C',  'LCZ 3':  '#FF0A22',  'LCZ 4':  '#C54F1E',
-            'LCZ 5':  '#FF6628',  'LCZ 6':  '#FF985E',  'LCZ 7':  '#FDED3F',  'LCZ 8':  '#BBBBBB',
-            'LCZ 9':  '#FFCBAB',  'LCZ 10': '#565656',  'LCZ A':  '#006A18',  'LCZ B':  '#00A926',
-            'LCZ C':  '#628432',  'LCZ D':  '#B5DA7F',  'LCZ E':  '#000000',  'LCZ F':  '#FCF7B1',
-            'LCZ G':  '#656BFA'
-        }
-        
-        # Adicionar camada GeoJSON
-        for idx, row in gdf_lcz.iterrows():
-            classe = row.get('zcl_classe', 'Desconhecida')
-            cor = cores_lcz.get(classe, '#808080')
-            area = row.get('area_km2', 0)
-            
-            folium.GeoJson(
-                row.geometry,
-                style_function=lambda feature, color=cor: {
-                    'fillColor': color,
-                    'color': 'black',
-                    'weight': 1,
-                    'fillOpacity': 0.7,
-                    'opacity': 0.8
-                },
-                popup=folium.Popup(
-                    f"""
-                    <div style='width: 250px; font-family: Arial, sans-serif;'>
-                        <h4 style='color: {cor}; margin-bottom: 10px;'>{classe}</h4>
-                        <p><b>📏 Área:</b> {area:.2f} km²</p>
-                        <p><b>📋 Características:</b></p>
-                        <p style='font-size: 12px;'>{row.get('descricao', 'Sem descrição disponível')}</p>
-                        <p><b>🌡️ Efeito Térmico:</b></p>
-                        <p style='font-size: 12px;'>{row.get('efeito_temp', 'Não disponível')}</p>
-                        <p><b>🏙️ Ilha de Calor:</b></p>
-                        <p style='font-size: 12px;'>{row.get('ilha_calor', 'Não disponível')}</p>
-                        <p><b>💡 Possível Direção de Intervenção (genérica por classe):</b></p>
-                        <p style='font-size: 12px;'>{row.get('intervencao', 'Não disponível')}</p>
-                        <p style='font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 6px; margin-top: 8px;'>
-                            ⚠️ Mapa de um produto global automatizado, não validado localmente.
-                            A intervenção é uma sugestão genérica por classe LCZ, sem considerar
-                            clima local, custo ou contexto social — use como ponto de partida
-                            para discussão, não como recomendação técnica pronta.
-                        </p>
-                    </div>
-                    """,
-                    max_width=300
-                )
-            ).add_to(m)
-        
-        # Ajustar zoom aos dados
-        m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
-        
-        # Adicionar controles
-        folium.LayerControl().add_to(m)
-        
-        # Instruções de uso
-        st.markdown("""
-        #### 🎯 Instruções de Uso
-        
-        **Como interagir com o mapa:**
-        1. 🖱️ **Clique nos polígonos** para ver informações detalhadas sobre cada zona climática
-        2. 🔍 **Use os controles de zoom** para explorar diferentes escalas
-        3. 🗺️ **Navegue pelo mapa** arrastando para explorar toda a área
-        4. 📊 **Observe as cores** que representam diferentes classes LCZ
-        """)
-        
-        # Exibir mapa
-        map_data = st_folium(m, width="100%", height=800, returned_objects=["last_object_clicked"])
-        
-        # Exibir informações do clique
-        if map_data['last_object_clicked']:
-            st.info(f"🎯 Último elemento clicado: {map_data['last_object_clicked']}")
-        
-        # Estatísticas do mapa
-        with st.expander("📊 Estatísticas do Mapa", expanded=False):
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("🏙️ Cidade", st.session_state.lcz_city_name or "N/A")
-            
-            with col2:
-                st.metric("🎨 Classes LCZ", len(gdf_lcz['zcl_classe'].unique()))
-            
-            with col3:
-                st.metric("📐 Total de Polígonos", len(gdf_lcz))
-            
-            with col4:
-                area_total = gdf_lcz['area_km2'].sum() if 'area_km2' in gdf_lcz.columns else 0
-                st.metric("📏 Área Total", f"{area_total:.1f} km²")
-            
-            # Distribuição por classe
-            if 'zcl_classe' in gdf_lcz.columns:
-                st.markdown("**📊 Distribuição por Classe LCZ:**")
-                distribuicao = gdf_lcz['zcl_classe'].value_counts()
-                st.bar_chart(distribuicao)
-        
-    except Exception as e:
-        st.error(f"❌ Erro ao carregar mapa: {str(e)}")
-        st.info("💡 Tente gerar um novo mapa LCZ usando o gerador acima.")

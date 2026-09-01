@@ -15,8 +15,7 @@ import folium
 from shapely.geometry import Polygon
 import json
 from utils import simulacao
-import time
-from math import radians, sin, cos, sqrt, atan2
+from math import radians, cos
 
 # --- Configurações e Constantes ---
 
@@ -25,8 +24,62 @@ TIPOS_INTERVENCAO = [
     "Alteração de Albedo", 
     "Telhado Verde",
     "Pavimento Permeável",
+    "Arborização de Rua",
+    "Corpo d'Água Urbano",
     "Expansão Urbana"
 ]
+
+EVIDENCIA_INTERVENCOES = {
+    "Parque Urbano": {
+        "metrica": "diferença de temperatura entre parque e entorno",
+        "faixa": "1,7–3,3 °C em estudos de parques; até 5,9 °C em noite de verão em um estudo específico",
+        "limite": "não é uma taxa universal por m²; depende de tamanho, forma, vegetação, vento, horário e clima",
+        "fonte": "https://doi.org/10.1038/s41598-024-67277-2",
+        "fonte_nome": "Zhang et al. (2024), Scientific Reports",
+    },
+    "Alteração de Albedo": {
+        "metrica": "temperatura do ar urbano ao meio-dia",
+        "faixa": "redução média de 0,8 °C em semanas típicas e 1,2 °C em ondas de calor, em Guangzhou",
+        "limite": "resultado de cenário urbano específico; não equivale diretamente à temperatura de uma superfície",
+        "fonte": "https://doi.org/10.1021/acs.est.5b04886",
+        "fonte_nome": "Wang et al. (2016), Environmental Science & Technology",
+    },
+    "Telhado Verde": {
+        "metrica": "temperatura da superfície do telhado",
+        "faixa": "diferenças frequentemente acima de 20 °C e, em alguns momentos, acima de 30 °C",
+        "limite": "é temperatura de superfície, não temperatura do ar do bairro; depende de insolação e umidade",
+        "fonte": "https://doi.org/10.1016/j.buildenv.2023.110842",
+        "fonte_nome": "Hunter College study (2023), Building and Environment",
+    },
+    "Pavimento Permeável": {
+        "metrica": "temperatura do pavimento em experimento de canyon urbano",
+        "faixa": "2,1 °C mais quente de dia e 2,0 °C mais frio à noite que concreto impermeável, no estudo consultado",
+        "limite": "o efeito depende fortemente de sombra, chuva, umidade e material; não deve ser generalizado",
+        "fonte": "https://doi.org/10.1016/j.buildenv.2025.113948",
+        "fonte_nome": "Outdoor experiment (2026), Building and Environment",
+    },
+    "Arborização de Rua": {
+        "metrica": "temperatura do ar sob a copa em ruas",
+        "faixa": "redução média observada de 0,5–2,2 °C em ruas de Atenas sob condições de calor",
+        "limite": "depende da espécie, copa, sombra, vento, umidade, orientação da rua e horário",
+        "fonte": "https://doi.org/10.1016/j.renene.2009.12.021",
+        "fonte_nome": "Street shade trees study (2010), Renewable Energy",
+    },
+    "Corpo d'Água Urbano": {
+        "metrica": "ilha de frescor do ar durante o dia",
+        "faixa": "0,1–0,6 °C de resfriamento diurno; o estudo também observou 1,2–1,3 °C de aquecimento noturno",
+        "limite": "não é uma intervenção de resfriamento garantido; umidade, vento e armazenamento de calor mudam o efeito",
+        "fonte": "https://doi.org/10.1016/j.buildenv.2023.110860",
+        "fonte_nome": "Urban lakes field study (2023), Building and Environment",
+    },
+    "Expansão Urbana": {
+        "metrica": "tendência de aquecimento por mudança de cobertura",
+        "faixa": "sem faixa universal isolada: o efeito depende da substituição de vegetação, materiais, geometria e ventilação",
+        "limite": "não exibir como +1–4 °C relativo a área rural sem cenário local e série de referência",
+        "fonte": "https://doi.org/10.1038/s41598-024-67277-2",
+        "fonte_nome": "Zhang et al. (2024), Scientific Reports",
+    },
+}
 
 # Informações educativas para cada tipo de intervenção
 INFO_INTERVENCOES = {
@@ -34,31 +87,43 @@ INFO_INTERVENCOES = {
         "descricao": "Áreas verdes que reduzem temperaturas através da sombra e evapotranspiração",
         "beneficios": ["Redução de temperatura", "Melhoria da qualidade do ar", "Bem-estar psicológico"],
         "exemplos": ["Parque Ibirapuera (SP)", "Central Park (NY)", "Hyde Park (Londres)"],
-        "impacto_teorico": "Pode reduzir a temperatura em 2-5°C localmente"
+        "impacto_teorico": "A evidência publicada varia por local e mede principalmente diferença parque-entorno ou temperatura de superfície."
     },
     "Alteração de Albedo": {
         "descricao": "Aumento da refletividade de superfícies para reduzir absorção de calor",
         "beneficios": ["Redução do efeito de ilha de calor", "Menor consumo de energia", "Conforto térmico"],
         "exemplos": ["Telhados brancos", "Pavimentos claros", "Superfícies reflexivas"],
-        "impacto_teorico": "Cada 0.1 de aumento no albedo pode reduzir a temperatura em 0.5-1°C"
+        "impacto_teorico": "A resposta do ar depende da escala da intervenção e das condições meteorológicas."
     },
     "Telhado Verde": {
         "descricao": "Coberturas vegetadas que isolam termicamente e absorvem calor",
         "beneficios": ["Isolamento térmico", "Redução de enxurradas", "Biodiversidade urbana"],
         "exemplos": ["Prefeitura de Chicago (EUA)", "Centro de Vancouver (Canadá)", "Edifícios em Cingapura"],
-        "impacto_teorico": "Pode reduzir a temperatura do telhado em até 30°C no verão"
+        "impacto_teorico": "Os maiores efeitos publicados são de superfície do telhado, não do ar do bairro."
     },
     "Pavimento Permeável": {
         "descricao": "Superfícies que permitem infiltração de água, reduzindo calor por evaporação",
         "beneficios": ["Drenagem sustentável", "Redução de enchentes", "Conforto térmico"],
         "exemplos": ["Calçadas permeáveis", "Estacionamentos drenantes", "Vias com infiltração"],
-        "impacto_teorico": "Pode ser 5-10°C mais frio que pavimento convencional"
+        "impacto_teorico": "O efeito térmico varia entre dia e noite e é muito sensível à umidade e à sombra."
+    },
+    "Arborização de Rua": {
+        "descricao": "Árvores de rua criam sombra e podem reduzir a temperatura do ar próximo ao pedestre",
+        "beneficios": ["Sombra", "Conforto térmico", "Biodiversidade urbana"],
+        "exemplos": ["Calçadas arborizadas", "Canteiros viários", "Ruas escolares sombreadas"],
+        "impacto_teorico": "A evidência é local e depende da espécie, da copa e das condições de vento."
+    },
+    "Corpo d'Água Urbano": {
+        "descricao": "Lagos, canais e espelhos d'água trocam calor e umidade com o entorno",
+        "beneficios": ["Resfriamento diurno potencial", "Paisagem e lazer", "Biodiversidade"],
+        "exemplos": ["Lagos urbanos", "Canais abertos", "Áreas úmidas restauradas"],
+        "impacto_teorico": "O efeito pode inverter à noite; é necessário avaliar temperatura, umidade e vento juntos."
     },
     "Expansão Urbana": {
         "descricao": "Aumento de áreas construídas que geralmente intensifica ilhas de calor",
         "beneficios": ["Expansão econômica", "Mais habitações", "Desenvolvimento"],
         "desvantagens": ["Aumento de temperatura", "Maior impermeabilização", "Perda de áreas verdes"],
-        "impacto_teorico": "Pode aumentar temperaturas em 1-4°C em relação a áreas rurais"
+        "impacto_teorico": "Não há uma faixa única publicável para toda expansão urbana; o cenário precisa de referência local."
     }
 }
 
@@ -77,7 +142,7 @@ def inicializar_session_state():
     if 'historico_simulacoes' not in st.session_state:
         st.session_state.historico_simulacoes = []
     if 'tutorial_ativo' not in st.session_state:
-        st.session_state.tutorial_ativo = True
+        st.session_state.tutorial_ativo = False
 
 # --- Componentes de Interface Melhorados ---
 
@@ -85,12 +150,27 @@ def renderizar_header():
     '''Renderiza o cabeçalho com informações educativas.'''
     from utils.ui import renderizar_cabecalho_modulo
     renderizar_cabecalho_modulo(
-        "🧪 Módulo Simular",
-        "Simule intervenções urbanas e entenda seu impacto no microclima"
+        "Módulo Simular",
+        "Simule intervenções urbanas e entenda seu impacto no microclima",
+        icone="simulate"
     )
 
     # Botão agora fica abaixo do cabeçalho
-    st.markdown("<br>", unsafe_allow_html=True)  # espaço
+    st.markdown("""
+    <div class="learning-guide simulation-guide">
+        <div class="learning-guide-step is-active"><span>1</span><div><strong>Escolha</strong><small>uma intervenção</small></div></div>
+        <div class="learning-guide-connector"></div>
+        <div class="learning-guide-step"><span>2</span><div><strong>Delimite</strong><small>uma área no mapa</small></div></div>
+        <div class="learning-guide-connector"></div>
+        <div class="learning-guide-step"><span>3</span><div><strong>Simule</strong><small>e interprete</small></div></div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.caption("A sequência é cumulativa: primeiro descreva a mudança, depois informe onde ela acontece e por fim observe o efeito estimado.")
+    st.warning(
+        "**Cuidado científico:** os resultados são cenários didáticos baseados em ordens de grandeza da literatura. "
+        "Eles não são uma previsão local, não substituem medição de campo e não devem ser publicados como resultado empírico da sua área. "
+        "A unidade e a faixa observada mudam conforme a intervenção."
+    )
     if st.button("🎓 Tutorial Interativo", use_container_width=False):
         st.session_state.tutorial_ativo = not st.session_state.tutorial_ativo
 
@@ -220,6 +300,12 @@ def renderizar_formulario_nova_intervencao_melhorado():
                 with st.container():
                     st.markdown(f"**📚 Sobre {tipo_selecionado}:**")
                     st.info(info['descricao'])
+                    evidencia = EVIDENCIA_INTERVENCOES[tipo_selecionado]
+                    st.markdown(
+                        f"**Evidência publicada ({evidencia['metrica']}):** {evidencia['faixa']}  \n"
+                        f"**Limite de interpretação:** {evidencia['limite']}  \n"
+                        f"[Fonte: {evidencia['fonte_nome']}]({evidencia['fonte']})"
+                    )
         
         with col2:
             area_estimada = st.number_input(
@@ -274,7 +360,21 @@ def renderizar_formulario_nova_intervencao_melhorado():
                 "Permeabilidade", 0.0, 1.0, 0.6, 0.05,
                 help="Capacidade do pavimento de infiltrar água."
             )
-            st.caption(f"💧 {parametros['permeabilidade']*100:.0f}% da água da chuva será infiltrará")
+            st.caption(f"💧 {parametros['permeabilidade']*100:.0f}% da água da chuva será infiltrada")
+
+        elif tipo_selecionado == "Arborização de Rua":
+            parametros["cobertura_copa"] = st.slider(
+                "Cobertura da Copa", 0.0, 1.0, 0.6, 0.05,
+                help="Proporção do trecho coberta pela copa das árvores."
+            )
+            st.caption(f"🌳 Aproximadamente {parametros['cobertura_copa']*100:.0f}% do trecho terá sombra de copa")
+
+        elif tipo_selecionado == "Corpo d'Água Urbano":
+            parametros["proporcao_agua"] = st.slider(
+                "Proporção de Água", 0.0, 1.0, 0.5, 0.05,
+                help="Proporção da área ocupada pelo corpo d'água no cenário."
+            )
+            st.caption("💧 O efeito é diurno e local; à noite, a umidade e o calor armazenado podem inverter a resposta")
         
         elif tipo_selecionado == "Expansão Urbana":
             parametros["fator_construcao"] = st.slider(
@@ -295,7 +395,6 @@ def renderizar_formulario_nova_intervencao_melhorado():
             st.session_state.intervencoes.append(nova_intervencao)
             st.success(f"✅ Intervenção '{tipo_selecionado}' adicionada com sucesso!")
             st.balloons()
-            time.sleep(1)
             st.rerun()
 
 def renderizar_mapa_interativo_melhorado():
@@ -499,8 +598,6 @@ def renderizar_simulacao_e_resultados_melhorado():
                 
             except Exception as e:
                 st.error(f"❌ Erro na simulação: {e}")
-                st.write("**Debug Info:**")
-                st.write(f"Intervenções: {st.session_state.intervencoes}")
     
     with col2:
         if st.session_state.resultado_simulacao:
@@ -509,13 +606,14 @@ def renderizar_simulacao_e_resultados_melhorado():
             
             # Métrica principal
             st.metric(
-                "Impacto Térmico Total (estimativa)",
+                "Cenário térmico combinado (modelo didático)",
                 f"{delta:.2f} °C",
                 delta=f"{delta:.2f} °C",
-                help="Estimativa simplificada da variação média de temperatura do ar na "
-                     "área da intervenção, sem considerar horário, estação do ano ou "
-                     "clima de fundo local — ver 'Modelo Didático Simplificado'."
+                help="Valor de um modelo didático simplificado. Não é uma medição, não é uma previsão local "
+                     "e não deve ser comparado diretamente com estudos que medem LST, superfície de telhado "
+                     "ou temperatura do ar em outras escalas. Consulte a evidência da intervenção."
             )
+            st.caption("O número combina intervenções por uma regra simplificada. Para uso científico ou publicação, substitua-o por dados locais, método explícito e incerteza.")
             
             # Feedback educativo expandido
             if delta < -1:
@@ -696,33 +794,27 @@ def renderizar_exportacao():
         return
     
     st.markdown("### 📤 Exportar Resultados")
-    
-    col1, col2, col3 = st.columns(3)
-    
+
+    col1, col2 = st.columns(2)
+
     with col1:
-        if st.button("📊 Exportar CSV", use_container_width=True):
-            df_resumo = pd.DataFrame(st.session_state.resultado_simulacao['resumo_detalhado'])
-            csv = df_resumo.to_csv(index=False)
-            st.download_button(
-                label="⬇️ Baixar CSV",
-                data=csv,
-                file_name="simulacao_clima_urbano.csv",
-                mime="text/csv"
-            )
-    
+        df_resumo = pd.DataFrame(st.session_state.resultado_simulacao['resumo_detalhado'])
+        st.download_button(
+            "📊 Baixar CSV",
+            df_resumo.to_csv(index=False),
+            "simulacao_clima_urbano.csv",
+            "text/csv",
+            use_container_width=True,
+        )
+
     with col2:
-        if st.button("📋 Exportar JSON", use_container_width=True):
-            json_data = json.dumps(st.session_state.resultado_simulacao, indent=2)
-            st.download_button(
-                label="⬇️ Baixar JSON",
-                data=json_data,
-                file_name="simulacao_clima_urbano.json",
-                mime="application/json"
-            )
-    
-    with col3:
-        if st.button("📄 Gerar Relatório", use_container_width=True):
-            st.info("🚧 Funcionalidade de relatório em desenvolvimento.")
+        st.download_button(
+            "📋 Baixar JSON",
+            json.dumps(st.session_state.resultado_simulacao, indent=2),
+            "simulacao_clima_urbano.json",
+            "application/json",
+            use_container_width=True,
+        )
 
 # --- Função Principal Melhorada ---
 
@@ -734,21 +826,25 @@ def renderizar_pagina():
     renderizar_header()
     renderizar_tutorial()
     
-    # Indicadores rápidos
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Intervenções Ativas", len(st.session_state.intervencoes))
-    with col2:
-        st.metric("Áreas Mapeadas", len(st.session_state.poligonos_desenhados))
-    with col3:
-        st.metric("Cenários Salvos", len(st.session_state.cenarios))
-    with col4:
-        st.metric("Simulações Realizadas", len(st.session_state.historico_simulacoes))
+    # Indicadores rápidos — só depois que existir algo a mostrar, para não
+    # recepcionar quem acabou de abrir o módulo com 4 métricas zeradas.
+    if (st.session_state.intervencoes or st.session_state.poligonos_desenhados
+            or st.session_state.cenarios or st.session_state.historico_simulacoes):
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Intervenções Ativas", len(st.session_state.intervencoes))
+        with col2:
+            st.metric("Áreas Mapeadas", len(st.session_state.poligonos_desenhados))
+        with col3:
+            st.metric("Cenários Salvos", len(st.session_state.cenarios))
+        with col4:
+            st.metric("Simulações Realizadas", len(st.session_state.historico_simulacoes))
     
     # Layout principal em abas
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏗️ Intervenções", "🗺️ Mapa", "🚀 Simular", "📊 Resultados", "📚 Histórico"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["1. Intervenções", "2. Mapa", "3. Simular", "4. Resultados", "5. Histórico"])
     
     with tab1:
+        st.info("Escolha uma intervenção e ajuste seus parâmetros. Cada alteração representa uma hipótese sobre o clima urbano.")
         if st.session_state.intervencoes:
             st.markdown("### 📋 Intervenções Configuradas")
             for i, intervencao in enumerate(st.session_state.intervencoes):
@@ -761,6 +857,7 @@ def renderizar_pagina():
         renderizar_gerenciamento_cenarios()
     
     with tab2:
+        st.info("Desenhe no mapa a área onde a intervenção será aplicada. O tamanho da área influencia o resultado.")
         renderizar_mapa_interativo_melhorado()
         
         if st.session_state.poligonos_desenhados:
@@ -777,9 +874,11 @@ def renderizar_pagina():
                         st.rerun()
     
     with tab3:
+        st.info("Quando as etapas anteriores estiverem prontas, execute a simulação e observe o sinal da variação térmica.")
         renderizar_simulacao_e_resultados_melhorado()
     
     with tab4:
+        st.info("Compare o impacto de cada intervenção e procure explicações para o resultado, não apenas o maior número.")
         if st.session_state.resultado_simulacao:
             renderizar_visualizacoes_avancadas_melhorado()
             renderizar_exportacao()

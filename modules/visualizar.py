@@ -8,16 +8,16 @@ import pandas as pd
 import numpy as np
 from utils import processamento
 from utils.navegacao import ir_para
+from utils.ui import renderizar_cabecalho_modulo
 
 def renderizar_pagina():
     """Renderiza a página do módulo Visualizar."""
     
-    st.markdown("""
-    <div class="module-header">
-        <h1>📊 Módulo Visualizar</h1>
-        <p>Explore gráficos e estatísticas detalhadas da sua análise</p>
-    </div>
-    """, unsafe_allow_html=True)
+    renderizar_cabecalho_modulo(
+        "Módulo Visualizar",
+        "Explore gráficos e estatísticas detalhadas da sua análise",
+        icone="visualize"
+    )
 
     # Verificar se a análise foi executada
     if 'analise_pronta' not in st.session_state or not st.session_state.get('analise_pronta'):
@@ -43,16 +43,30 @@ def renderizar_pagina():
         st.error("❌ Dados base de ZCL não foram carregados. Verifique a configuração da aplicação.")
         return
 
-    # Layout principal
-    tab1, tab2, tab3 = st.tabs(["🗺️ Análise Espacial", "📈 Análise Estatística", "📋 Relatório"])
+    st.markdown("""
+    <div class="learning-guide">
+        <div class="learning-guide-step is-active"><span>1</span><div><strong>Observe</strong><small>mapa e composição</small></div></div>
+        <div class="learning-guide-connector"></div>
+        <div class="learning-guide-step"><span>2</span><div><strong>Compare</strong><small>classes e valores</small></div></div>
+        <div class="learning-guide-connector"></div>
+        <div class="learning-guide-step"><span>3</span><div><strong>Registre</strong><small>relatório e dados</small></div></div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.caption("Comece pelo mapa para entender o contexto. Depois compare os valores entre as Zonas Climáticas Locais.")
+
+    # Layout principal em uma sequência de leitura simples.
+    tab1, tab2, tab3 = st.tabs(["1. Mapa e contexto", "2. Comparar valores", "3. Relatório"])
     
     with tab1:
+        st.info("Leia esta etapa como uma pergunta: **onde estão as zonas e os pontos mais quentes?**")
         renderizar_analise_espacial(dados_usuario, area_de_interesse_geojson, gdf_zcl_base)
     
     with tab2:
+        st.info("Aqui você testa a hipótese: **as diferenças entre zonas aparecem nos dados medidos?**")
         renderizar_analise_estatistica(dados_usuario, area_de_interesse_geojson, gdf_zcl_base)
     
     with tab3:
+        st.info("Use o relatório para registrar a interpretação e baixar os dados já associados às ZCL.")
         renderizar_relatorio(dados_usuario, area_de_interesse_geojson, gdf_zcl_base)
 
 def renderizar_analise_espacial(dados_usuario, area_de_interesse_geojson, gdf_zcl_base):
@@ -90,6 +104,7 @@ def renderizar_analise_espacial(dados_usuario, area_de_interesse_geojson, gdf_zc
                     st.markdown("#### 📏 Métricas da Área")
                     st.metric("Área Total", f"{stats['total_area_m2']/1000000:.2f} km²")
                     st.metric("Classes de ZCL", stats['num_classes'])
+                    st.caption("A composição mostra como a área se divide entre diferentes formas urbanas e coberturas.")
                     
                     # Tabela detalhada
                     st.markdown("#### 📊 Detalhamento")
@@ -188,6 +203,8 @@ def renderizar_analise_estatistica(dados_usuario, area_de_interesse_geojson, gdf
         st.metric("Desvio Padrão", f"{pontos_com_zcl['valor'].std():.2f}")
     with col4:
         st.metric("Amplitude", f"{pontos_com_zcl['valor'].max() - pontos_com_zcl['valor'].min():.2f}")
+
+    st.caption("Média = valor típico · Desvio padrão = variação entre pontos · Amplitude = distância entre menor e maior valor.")
     
     # Análise por ZCL
     st.markdown("#### 🏘️ Análise por Zona Climática Local")
@@ -237,7 +254,7 @@ def renderizar_analise_estatistica(dados_usuario, area_de_interesse_geojson, gdf
         st.markdown("#### 🔗 Tendência dos Valores ao Longo do Espaço")
         st.caption(
             "Isto mostra se os valores tendem a crescer/diminuir de norte a sul ou de "
-            "leste a oeste — é uma correlação simples com a coordenada, diferente de "
+            "leste a oeste. É uma correlação simples com a coordenada, diferente de "
             "métodos de **autocorrelação espacial** (ex. Índice de Moran), que exigiriam "
             "mais pontos e uma análise dedicada."
         )
@@ -323,7 +340,7 @@ def gerar_relatorio_automatico(dados_usuario, area_de_interesse_geojson, gdf_zcl
     relatorio = f"""# Relatório de Análise - Clima Urbano
 
 **Data da Análise:** {datetime.now().strftime('%d/%m/%Y %H:%M')}  
-**Plataforma:** Clima Urbano Interativo v2.0
+**Plataforma:** Clima Urbano Interativo v3.0
 
 ## 📊 Resumo Executivo
 
@@ -396,7 +413,7 @@ def gerar_relatorio_automatico(dados_usuario, area_de_interesse_geojson, gdf_zcl
 
     relatorio += (
         f"{n_achado}. Estes resultados são preliminares e dependem da densidade e "
-        "distribuição dos pontos coletados — trate como indicativo, não conclusivo.\n"
+        "distribuição dos pontos coletados. Trate como indicativo, não conclusivo.\n"
     )
 
     relatorio += """
@@ -417,4 +434,3 @@ def gerar_relatorio_automatico(dados_usuario, area_de_interesse_geojson, gdf_zcl
 """
     
     return relatorio
-

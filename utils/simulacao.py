@@ -1,10 +1,9 @@
 '''
-Lógica de Simulação Climática para a Plataforma Clima Urbano Interativo
-VERSÃO DIDÁTICA MELHORADA
+Lógica de simulação climática para a Plataforma Clima Urbano Interativo.
 
-Este módulo contém funções robustas para cálculo do impacto térmico (ΔT) 
-de intervenções urbanas, com coeficientes baseados em literatura científica
-e funcionalidades educativas.
+Calcula o impacto térmico (ΔT) de intervenções urbanas, com coeficientes
+baseados em ordens de grandeza da literatura científica (ver EVIDENCIA_
+INTERVENCOES em modules/simular.py para as fontes por intervenção).
 '''
 
 import numpy as np
@@ -16,16 +15,21 @@ import pandas as pd
 # para discutir tendências (esfria/aquece, mais/menos), não como previsão
 # quantitativa precisa — não há distinção de horário, estação ou clima de fundo.
 
-# Fatores de impacto por unidade de área (°C por km²)
+# Coeficientes de um cenário didático, não coeficientes empíricos universais.
+# A literatura mede métricas diferentes (LST, superfície de telhado, ar próximo
+# ao solo) e em escalas diferentes; por isso estes fatores não devem ser citados
+# como uma relação publicada de °C por km².
 FATORES_BASE = {
     "parque_urbano": -3.0,      # Oke (1989), Bowler et al. (2010)
     "alteracao_albedo": -0.6,   # Akbari et al. (2001) - por 0.1 de aumento no albedo
     "telhado_verde": -1.8,      # Takebayashi & Moriyama (2007)
     "pavimento_permeavel": -1.2, # Li et al. (2013)
+    "arborizacao_rua": -1.4,    # cenário didático informado pela evidência de sombra de rua
+    "corpo_agua": -0.4,          # cenário diurno didático; pode inverter à noite
     "expansao_urbana": 2.5       # Oke (1982)
 }
 
-# Fatores de escala para conversão de área
+# Conversão de área usada apenas para normalizar o cenário didático.
 FATOR_AREA = 1.0 / 1000000  # Converter m² para km²
 
 # --- FUNÇÕES AUXILIARES EDUCATIVAS ---
@@ -61,7 +65,21 @@ def explicar_impacto(tipo_intervencao, parametros, area_m2, resultado):
         - Taxa de permeabilidade: {parametros.get('permeabilidade', 0)*100:.0f}%
         - Efeito estimado: {resultado:.3f}°C de resfriamento
         """,
-        
+
+        "Arborização de Rua": f"""
+        **Mecanismo de resfriamento**: Sombra da copa sobre a rua
+        - Área do trecho: {area_m2:,.0f} m²
+        - Cobertura da copa: {parametros.get('cobertura_copa', 0)*100:.0f}%
+        - Efeito estimado: {resultado:.3f}°C de resfriamento
+        """,
+
+        "Corpo d'Água Urbano": f"""
+        **Mecanismo de resfriamento**: Troca de calor e umidade com o entorno (efeito diurno)
+        - Área do cenário: {area_m2:,.0f} m²
+        - Proporção de água: {parametros.get('proporcao_agua', 0)*100:.0f}%
+        - Efeito estimado: {resultado:.3f}°C de resfriamento
+        """,
+
         "Expansão Urbana": f"""
         **Mecanismo de aquecimento**: Aumento de superfícies impermeáveis e calor antropogênico
         - Área urbanizada: {area_m2:,.0f} m²
@@ -114,6 +132,16 @@ def validar_parametros(tipo, parametros, area_m2):
         permeabilidade = parametros.get('permeabilidade', 0)
         if not 0 <= permeabilidade <= 1:
             erros.append("Permeabilidade deve estar entre 0 e 1")
+
+    elif tipo == "Arborização de Rua":
+        cobertura_copa = parametros.get('cobertura_copa', 0)
+        if not 0 <= cobertura_copa <= 1:
+            erros.append("Cobertura da copa deve estar entre 0 e 1")
+
+    elif tipo == "Corpo d'Água Urbano":
+        proporcao_agua = parametros.get('proporcao_agua', 0)
+        if not 0 <= proporcao_agua <= 1:
+            erros.append("Proporção de água deve estar entre 0 e 1")
     
     elif tipo == "Expansão Urbana":
         fator_construcao = parametros.get('fator_construcao', 0)
@@ -185,12 +213,28 @@ def _calcular_impacto_expansao_urbana(area_m2, fator_construcao):
     
     return impacto
 
+def _calcular_impacto_arborizacao_rua(area_m2, cobertura_copa):
+    """Cenário didático de sombra arbórea em trecho de rua.
+
+    A cobertura é usada como proxy de exposição à sombra; a resposta real
+    depende de espécie, geometria da rua, vento, umidade e horário.
+    """
+    area_km2 = area_m2 * FATOR_AREA
+    return FATORES_BASE["arborizacao_rua"] * cobertura_copa * min(area_km2 * 100, 1.0)
+
+def _calcular_impacto_corpo_agua(area_m2, proporcao_agua):
+    """Cenário diurno didático de corpo d'água, sem extrapolação noturna."""
+    area_km2 = area_m2 * FATOR_AREA
+    return FATORES_BASE["corpo_agua"] * proporcao_agua * min(area_km2 * 100, 1.0)
+
 # --- DICIONÁRIO DE FUNÇÕES ATUALIZADO ---
 MAPA_INTERVENCOES = {
     "Parque Urbano": _calcular_impacto_parque,
     "Alteração de Albedo": _calcular_impacto_albedo,
     "Telhado Verde": _calcular_impacto_telhado_verde,
     "Pavimento Permeável": _calcular_impacto_pavimento_permeavel,
+    "Arborização de Rua": _calcular_impacto_arborizacao_rua,
+    "Corpo d'Água Urbano": _calcular_impacto_corpo_agua,
     "Expansão Urbana": _calcular_impacto_expansao_urbana
 }
 
@@ -234,6 +278,10 @@ def aplicar_intervencao(tipo, area_m2, parametros, retornar_explicacao=False):
             impacto = funcao_calculo(area_m2, parametros.get('cobertura', 0.5))
         elif tipo == "Pavimento Permeável":
             impacto = funcao_calculo(area_m2, parametros.get('permeabilidade', 0.5))
+        elif tipo == "Arborização de Rua":
+            impacto = funcao_calculo(area_m2, parametros.get('cobertura_copa', 0.5))
+        elif tipo == "Corpo d'Água Urbano":
+            impacto = funcao_calculo(area_m2, parametros.get('proporcao_agua', 0.5))
         elif tipo == "Expansão Urbana":
             impacto = funcao_calculo(area_m2, parametros.get('fator_construcao', 0.8))
         else:
@@ -243,7 +291,9 @@ def aplicar_intervencao(tipo, area_m2, parametros, retornar_explicacao=False):
             'impacto': impacto,
             'valido': True,
             'alertas': alertas,
-            'area_km2': area_m2 * FATOR_AREA
+            'area_km2': area_m2 * FATOR_AREA,
+            'tipo_resultado': 'cenário didático não validado localmente',
+            'publicavel_sem_validacao': False,
         }
         
         if retornar_explicacao:
@@ -305,6 +355,8 @@ def combinar_intervencoes(lista_intervencoes, pesos=None, retornar_detalhes=True
                 "impacto_ponderado": impacto_ponderado,
                 "valido": True,
                 "alertas": resultado.get('alertas', [])
+                ,"tipo_resultado": resultado.get('tipo_resultado', 'cenário didático não validado localmente')
+                ,"publicavel_sem_validacao": False
             }
             
             if 'explicacao' in resultado:

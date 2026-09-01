@@ -1,274 +1,156 @@
 # modules/investigar.py
 
+import os
+
 import streamlit as st
 from streamlit_folium import st_folium
 import folium
 from folium.plugins import Draw
-import pandas as pd
+from shapely.geometry import Polygon
 from utils import processamento
 from utils.navegacao import ir_para
+from utils.ui import renderizar_cabecalho_modulo
+
+CENTRO_CIDADE = {
+    "São Paulo": [-23.55, -46.63],
+    "Juiz de Fora": [-21.76, -43.35],
+}
+
+
+def _ler_exemplo_csv(cidade: str) -> str:
+    nome_arquivo = processamento.CIDADES_BASE[cidade]["exemplo_csv"]
+    caminho = os.path.join(os.path.dirname(os.path.dirname(__file__)), nome_arquivo)
+    with open(caminho, encoding="utf-8") as f:
+        return f.read()
+
 
 def renderizar_pagina():
     """Renderiza a página do módulo Investigar."""
-    
-    st.markdown("""
-    <div class="module-header">
-        <h1>🔬 Módulo Investigar</h1>
-        <p>Carregue seus dados de campo e defina áreas de interesse para análise detalhada</p>
-    </div>
-    """, unsafe_allow_html=True)
 
-    # Inicializar variáveis de estado se não existirem
+    renderizar_cabecalho_modulo(
+        "Módulo Investigar",
+        "Carregue seus dados de campo e defina uma área de interesse para análise",
+        icone="investigate",
+    )
+
     if 'dados_usuario' not in st.session_state:
         st.session_state['dados_usuario'] = None
     if 'area_de_interesse' not in st.session_state:
         st.session_state['area_de_interesse'] = None
 
-    # Layout em colunas
+    cidade_selecionada = st.selectbox(
+        "Cidade de referência para as Zonas Climáticas Locais",
+        list(processamento.CIDADES_BASE.keys()),
+        index=list(processamento.CIDADES_BASE.keys()).index(st.session_state.cidade_base),
+        help="Define qual mapa de LCZ é usado para cruzar com seus dados no módulo Visualizar, "
+             "e qual exemplo de CSV é oferecido abaixo. Escolha a cidade dos seus pontos de campo.",
+    )
+    if cidade_selecionada != st.session_state.cidade_base:
+        st.session_state.cidade_base = cidade_selecionada
+        st.session_state['dados_usuario'] = None
+        st.session_state['area_de_interesse'] = None
+        st.rerun()
+
     col1, col2 = st.columns([2, 1])
-    
+
     with col1:
-        # Passo 1: Upload do CSV
-        st.markdown("### 📁 Passo 1: Carregue seus Dados de Campo")
-        
-        with st.expander("ℹ️ Formato do arquivo CSV", expanded=False):
-            st.markdown("""
-            **Seu arquivo CSV deve conter pelo menos estas colunas:**
-            - **Latitude** (nomes aceitos: lat, latitude, LAT, Latitude)
-            - **Longitude** (nomes aceitos: lon, lng, longitude, LON, Longitude)  
-            - **Valor medido** (nomes aceitos: valor, temp, temperatura, medida, value)
-            
-            **Exemplo de estrutura:**
-            ```
-            latitude,longitude,temperatura,descricao
-            -23.5505,-46.6333,32.5,Praça da Sé
-            -23.5489,-46.6388,28.2,Parque Ibirapuera
-            -23.5558,-46.6396,35.1,Av. Paulista
-            ```
-            """)
-        
+        st.markdown("##### 1. Carregue seus dados de campo")
+
         arquivo_csv = st.file_uploader(
-            "Selecione um arquivo .csv com seus dados de campo:",
+            "Arquivo .csv com latitude, longitude e valor medido",
             type="csv",
-            help="O arquivo deve conter colunas de latitude, longitude e valores medidos. "
-                 "O horário e as condições meteorológicas da coleta afetam fortemente os "
-                 "resultados — meça em condições comparáveis (mesmo período do dia, sem "
-                 "chuva/vento forte) para poder comparar os pontos entre si."
+            help="Meça em condições comparáveis (mesmo período do dia, sem chuva/vento forte) "
+                 "para poder comparar os pontos entre si.",
         )
+
+        with st.expander("Formato do arquivo e exemplo"):
+            st.markdown(
+                "Colunas aceitas (o nome pode variar): **latitude** (lat), **longitude** (lon/lng) "
+                "e **valor medido** (valor, temp, temperatura, medida, value)."
+            )
+            exemplo_csv = _ler_exemplo_csv(st.session_state.cidade_base)
+            st.code(exemplo_csv, language="csv")
+            st.download_button(
+                f"📥 Baixar exemplo CSV ({st.session_state.cidade_base})",
+                exemplo_csv,
+                f"exemplo_dados_{st.session_state.cidade_base.lower().replace(' ', '_')}.csv",
+                "text/csv",
+            )
 
         if arquivo_csv:
             with st.spinner("Processando arquivo..."):
                 gdf_pontos, erro = processamento.validar_e_processar_csv(arquivo_csv)
-                
+
             if erro:
-                st.error(f"❌ {erro}")
+                st.error(erro)
                 st.session_state['dados_usuario'] = None
             else:
-                st.success(f"✅ {len(gdf_pontos)} pontos carregados com sucesso!")
                 st.session_state['dados_usuario'] = gdf_pontos
-                
-                # Mostrar preview dos dados
-                with st.expander("👀 Visualizar dados carregados"):
-                    st.dataframe(
-                        gdf_pontos.drop(columns='geometry').head(10),
-                        use_container_width=True
-                    )
-                    
-                    # Estatísticas básicas
-                    col_stats1, col_stats2, col_stats3 = st.columns(3)
-                    with col_stats1:
-                        st.metric("Total de Pontos", len(gdf_pontos))
-                    with col_stats2:
-                        st.metric("Valor Médio", f"{gdf_pontos['valor'].mean():.2f}")
-                    with col_stats3:
-                        st.metric("Amplitude", f"{gdf_pontos['valor'].max() - gdf_pontos['valor'].min():.2f}")
+                st.success(
+                    f"{len(gdf_pontos)} pontos carregados. Valor médio "
+                    f"{gdf_pontos['valor'].mean():.1f}, de {gdf_pontos['valor'].min():.1f} "
+                    f"a {gdf_pontos['valor'].max():.1f}."
+                )
+                with st.expander("Ver dados carregados"):
+                    st.dataframe(gdf_pontos.drop(columns='geometry').head(10), use_container_width=True)
 
-        # Passo 2: Definir Área de Interesse
-        st.markdown("### 🗺️ Passo 2: Defina sua Área de Interesse")
-        
-        st.info("""
-        **Instruções:**
-        1. Use a ferramenta de desenho (polígono) no mapa abaixo
-        2. Clique nos pontos para criar o contorno da sua área de estudo
-        3. Feche o polígono clicando no primeiro ponto novamente
-        4. A área será automaticamente detectada
-        """)
+        st.markdown("##### 2. Desenhe sua área de interesse")
+        st.caption("Use a ferramenta de polígono (canto superior esquerdo do mapa) para marcar o contorno da área.")
 
-        # Criar mapa com ferramenta de desenho
-        map_center = [-23.55, -46.63]
         m = folium.Map(
-            location=map_center, 
-            zoom_start=11, 
-            tiles="CartoDB positron"
+            location=CENTRO_CIDADE.get(st.session_state.cidade_base, [-23.55, -46.63]),
+            zoom_start=11, tiles="OpenStreetMap",
         )
-        
-        # Adicionar ferramenta de desenho
-        draw = Draw(
-            export=True,
-            filename='area_interesse.geojson',
+        Draw(
+            export=False,
             draw_options={
                 'polygon': {'showArea': True, 'metric': True},
                 'rectangle': {'showArea': True, 'metric': True},
-                'circle': False,
-                'marker': False,
-                'circlemarker': False,
-                'polyline': False
+                'circle': False, 'marker': False, 'circlemarker': False, 'polyline': False,
             },
-            edit_options={'edit': True}
-        )
-        draw.add_to(m)
-        
-        # Adicionar pontos do usuário se existirem
+            edit_options={'edit': True},
+        ).add_to(m)
+
         if st.session_state['dados_usuario'] is not None:
-            gdf_pontos = st.session_state['dados_usuario']
-            for _, row in gdf_pontos.iterrows():
+            for _, row in st.session_state['dados_usuario'].iterrows():
                 folium.CircleMarker(
                     location=[row['latitude'], row['longitude']],
-                    radius=6,
-                    popup=f"Valor: {row['valor']:.2f}",
-                    color='red',
-                    fill=True,
-                    fillColor='red',
-                    fillOpacity=0.7
+                    radius=6, popup=f"Valor: {row['valor']:.2f}",
+                    color='red', fill=True, fillColor='red', fillOpacity=0.7,
                 ).add_to(m)
-        
-        # Renderizar mapa e capturar dados desenhados
-        map_data = st_folium(
-            m, 
-            width=None, 
-            height=500,
-            returned_objects=["all_drawings"],
-            key="investigar_map"
-        )
 
-        # Processar área desenhada
-        if map_data and map_data.get("all_drawings") and len(map_data["all_drawings"]) > 0:
-            area_desenhada = map_data["all_drawings"][-1]['geometry']  # Pega a última área desenhada
+        map_data = st_folium(m, width=None, height=460, returned_objects=["all_drawings"], key="investigar_map")
+
+        if map_data and map_data.get("all_drawings"):
+            area_desenhada = map_data["all_drawings"][-1]['geometry']
             st.session_state['area_de_interesse'] = area_desenhada
-            
-            # Calcular área aproximada
-            try:
-                from shapely.geometry import Polygon
-                if area_desenhada['type'] == 'Polygon':
-                    coords = area_desenhada['coordinates'][0]
-                    poly = Polygon(coords)
-                    # Conversão aproximada para m² (não é precisa, apenas indicativa)
-                    area_graus = poly.area
-                    area_km2 = area_graus * 111 * 111  # Aproximação grosseira
-                    
-                    st.success(f"✅ Área de interesse definida! Área aproximada: {area_km2:.2f} km²")
-            except:
-                st.success("✅ Área de interesse definida!")
+
+            if area_desenhada['type'] == 'Polygon':
+                # Conversão aproximada grau -> km² (suficiente para dar uma ideia de escala,
+                # não para uso técnico — WGS84 não é uma projeção equivalente de área).
+                area_km2 = Polygon(area_desenhada['coordinates'][0]).area * 111 * 111
+                st.success(f"Área de interesse definida (~{area_km2:.2f} km²).")
+            else:
+                st.success("Área de interesse definida.")
 
     with col2:
-        # Painel de status e controles
-        st.markdown("### 📊 Status da Análise")
-        
-        # Status dos dados
-        if st.session_state['dados_usuario'] is not None:
-            st.success("✅ Dados carregados")
-            num_pontos = len(st.session_state['dados_usuario'])
-            st.metric("Pontos de dados", num_pontos)
-        else:
-            st.warning("⏳ Aguardando dados")
-        
-        # Status da área
-        if st.session_state['area_de_interesse'] is not None:
-            st.success("✅ Área definida")
-        else:
-            st.warning("⏳ Aguardando área")
-        
-        st.markdown("---")
-        
-        # Passo 3: Executar Análise
-        st.markdown("### 🚀 Passo 3: Executar Análise")
-        
-        pode_analisar = (
-            st.session_state['dados_usuario'] is not None or 
-            st.session_state['area_de_interesse'] is not None
-        )
-        
-        if not pode_analisar:
-            st.info("Carregue dados e/ou defina uma área para habilitar a análise.")
-        
-        if st.button(
-            "🔍 Executar Análise", 
-            type="primary",
-            disabled=not pode_analisar,
-            use_container_width=True
-        ):
-            st.session_state['analise_pronta'] = True
-            st.success("✅ Dados e área preparados!")
-            st.info(
-                "O cruzamento dos pontos com as Zonas Climáticas Locais acontece no "
-                "módulo **Visualizar** — vá até lá para ver os resultados detalhados."
-            )
+        st.markdown("##### Status")
+        st.write("✅ Dados carregados" if st.session_state['dados_usuario'] is not None else "⏳ Aguardando dados")
+        st.write("✅ Área definida" if st.session_state['area_de_interesse'] is not None else "⏳ Aguardando área")
 
+        st.divider()
+        st.markdown("##### 3. Executar análise")
+
+        pode_analisar = (
+            st.session_state['dados_usuario'] is not None or st.session_state['area_de_interesse'] is not None
+        )
+        if not pode_analisar:
+            st.caption("Carregue dados e/ou defina uma área para habilitar a análise.")
+
+        if st.button("🔍 Executar Análise", type="primary", disabled=not pode_analisar, use_container_width=True):
+            st.session_state['analise_pronta'] = True
+
+        if st.session_state.get('analise_pronta'):
+            st.success("Pronto! O cruzamento com as Zonas Climáticas Locais acontece no módulo Visualizar.")
             if st.button("📊 Ir para Visualizar", use_container_width=True):
                 ir_para("Visualizar")
-
-        # Seção de ajuda
-        st.markdown("---")
-        st.markdown("### ❓ Precisa de Ajuda?")
-        
-        with st.expander("📋 Exemplo de dados CSV"):
-            exemplo_csv = """latitude,longitude,temperatura,local
--23.5505,-46.6333,32.5,Centro
--23.5489,-46.6388,28.2,Ibirapuera
--23.5558,-46.6396,35.1,Paulista
--23.5629,-46.6544,30.8,Vila Madalena"""
-            
-            st.code(exemplo_csv, language="csv")
-            
-            # Botão para baixar exemplo
-            st.download_button(
-                label="📥 Baixar exemplo CSV",
-                data=exemplo_csv,
-                file_name="exemplo_dados_campo.csv",
-                mime="text/csv"
-            )
-        
-        with st.expander("🎯 Dicas de coleta"):
-            st.markdown("""
-            **Para coleta de dados de campo:**
-            - Use GPS para coordenadas precisas
-            - Meça em horários consistentes
-            - Anote condições meteorológicas
-            - Documente o tipo de superfície
-            - Faça múltiplas medições por ponto
-            """)
-
-    # Seção de informações adicionais
-    st.markdown("---")
-    st.markdown("### 🎓 Metodologia Científica")
-    
-    col_info1, col_info2 = st.columns(2)
-    
-    with col_info1:
-        st.markdown("""
-        **Coleta de Dados Recomendada:**
-        - Temperatura do ar (°C)
-        - Umidade relativa (%)
-        - Velocidade do vento (m/s)
-        - Coordenadas GPS precisas
-        - Horário da medição
-        - Descrição do local
-        """)
-    
-    with col_info2:
-        st.markdown("""
-        **Análises Disponíveis:**
-        - Correlação com Zonas Climáticas Locais
-        - Estatísticas descritivas por área
-        - Distribuição espacial dos valores
-        - Comparação entre diferentes ZCLs
-        - Identificação de hotspots
-        """)
-
-    # Footer com próximos passos
-    if st.session_state.get('analise_pronta'):
-        st.success("""
-        🎉 **Análise pronta!** Seus dados foram processados com sucesso. 
-        Vá para o módulo **Visualizar** para explorar os resultados em detalhes.
-        """)
-

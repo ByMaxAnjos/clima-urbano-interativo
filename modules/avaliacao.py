@@ -3,16 +3,16 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from utils.ui import renderizar_cabecalho_modulo
 
 def renderizar_pagina():
     """Renderiza o formulário de avaliação da plataforma."""
 
-    st.markdown("""
-    <div class="module-header">
-        <h1>📝 Formulário de Avaliação</h1>
-        <p>Coletamos críticas, sugestões e ideias de estudantes e professores para aprimorar a Plataforma Clima Urbano Interativo.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    renderizar_cabecalho_modulo(
+        "Formulário de Avaliação",
+        "Coletamos críticas, sugestões e ideias de estudantes e professores para aprimorar a Plataforma Clima Urbano Interativo.",
+        icone="evaluation"
+    )
 
     st.markdown("---")
     st.header("1️⃣ Perfil do Respondente")
@@ -183,6 +183,5 @@ def renderizar_pagina():
         2. Envie o arquivo por e-mail para: **marianaandreotti@gmail.com** (Mariana Dias).
         3. No corpo do e-mail, sinta-se à vontade para adicionar comentários adicionais.
         
-        💡 Sugestão de assunto do e-mail: "Meu Nome:Avaliação Plataforma Clima Urbano Interativo"
+        💡 Sugestão de assunto do e-mail: "Meu Nome: Avaliação Plataforma Clima Urbano Interativo"
         """)
-

@@ -229,7 +229,7 @@ class DataProcessingError(Exception):
     pass
 
 def lcz_plot_map(x, isave=False, show_legend=True, inclusive=False,
-                 title=None, subtitle=None, caption=None, renderer="plotly"):
+                 title=None, subtitle=None, caption=None, renderer="plotly", lang="pt"):
     """
     Visualização interativa do mapa LCZ.
 
@@ -238,6 +238,10 @@ def lcz_plot_map(x, isave=False, show_legend=True, inclusive=False,
     (zoom/pan reais, WebGL para rasters grandes). LCZ4py exige um caminho de
     arquivo ou dataset rasterio — se `x` vier como tupla (dados, perfil), como
     no contrato antigo desta função, ela é gravada num arquivo temporário.
+
+    `lang="pt"` por padrão: sem isso, a legenda, o título do mapa e os nomes
+    das classes LCZ saem em inglês (padrão do LCZ4py), inconsistente com o
+    resto da plataforma, que é toda em português.
 
     Parameters
     ----------
@@ -254,6 +258,9 @@ def lcz_plot_map(x, isave=False, show_legend=True, inclusive=False,
     renderer : {"plotly", "maplibre"}
         "plotly" retorna uma figura Plotly (zoom/pan, WebGL); "maplibre"
         retorna uma página HTML com o raster sobreposto a um basemap OSM
+    lang : str, default "pt"
+        Idioma da legenda, título e nomes das classes LCZ ("pt"/"en"/"es"/"zh",
+        conforme suportado pelo LCZ4py)
 
     Returns
     -------
@@ -290,6 +297,7 @@ def lcz_plot_map(x, isave=False, show_legend=True, inclusive=False,
             subtitle=subtitle,
             caption=caption,
             renderer=renderer,
+            lang=lang,
         )
     finally:
         if caminho_temporario:
@@ -447,9 +455,9 @@ def lcz_cal_area(gdf, return_stats=True, return_plot_data=True, raster_path=None
     de LCZ4py.general.lcz_cal_area, que conta pixels diretamente no raster —
     mais rápido e sem os pequenos artefatos de vetorização/dissolve do caminho
     baseado em polígonos. `num_poligonos` e as estatísticas por polígono
-    (média/desvio/mín/máx) continuam vindo do `gdf` vetorizado, pois são usadas
-    como proxy de densidade de vetorização (ver métrica "Densidade de
-    Polígonos" em explorar.py) — LCZ4py não expõe contagem de polígonos.
+    (média/desvio/mín/máx) continuam vindo do `gdf` vetorizado — LCZ4py não
+    expõe contagem de polígonos, e esses valores ficam disponíveis no
+    resultado mesmo que a UI atual não os exiba.
 
     Parameters
     ----------
@@ -690,6 +698,90 @@ def validate_lcz_data(gdf):
     except Exception as e:
         validation_result['valid'] = False
         validation_result['errors'].append(f"Erro durante validação: {str(e)}")
-    
+
     return validation_result
+
+
+# Ano anual mais recente disponível por poluente no dataset GHAP (ver
+# LCZ4py.general.lcz_grid_pollution_ghap._AVAIL_YEARS) — usado para baixar só
+# 1 banda em vez de todo o histórico, mantendo o download leve no Streamlit Cloud.
+_GHAP_ULTIMO_ANO = {"pm25": 2022, "o3": 2020, "co": 2022}
+
+
+def lcz_get_lst(raster_path, dias=3, fonte="sentinel3"):
+    """
+    Baixa uma série curta e recente de Temperatura de Superfície (LST) por
+    satélite, recortada na área do mapa LCZ já baixado.
+
+    Wrapper fino sobre LCZ4py.general.lcz_get_lst: fixa uma janela curta
+    (`dias`) e recente em vez de deixar o intervalo em aberto, para manter o
+    download leve o suficiente para rodar no Streamlit Cloud. `dias=3` é o
+    padrão porque cada dia do Sentinel-3 baixa 2 arquivos sequenciais
+    (~40-50s/dia) — 7 dias levaria minutos.
+
+    Parameters
+    ----------
+    raster_path : str
+        Caminho do GeoTIFF do mapa LCZ recortado (o mesmo usado por lcz_cal_area)
+    dias : int, default 3
+        Número de dias da série — cada dia é uma banda a mais no raster
+        baixado, e no Sentinel-3 cada dia custa ~40-50s de download
+    fonte : {"sentinel3", "goes"}
+        "sentinel3" é global (~1 km) — a opção padrão, pois cobre qualquer
+        cidade brasileira; "goes" na LCZ4py atual só cobre a área CONUS dos
+        EUA (14°N-55°N), então não serve para nenhuma cidade do Brasil apesar
+        do nome sugerir cobertura das Américas — mantido como opção só para
+        cidades norte-americanas.
+
+    Returns
+    -------
+    LCZ4py.general.LCZLSTResult
+        `.array` é (n_dias, altura, largura) em °C; `.dates` lista as datas (ISO)
+    """
+    from datetime import date, timedelta
+    from LCZ4py.general import lcz_get_lst as _lcz4py_get_lst
+
+    fim = date.today() - timedelta(days=4)  # latência típica de processamento do satélite
+    inicio = fim - timedelta(days=dias - 1)
+
+    return _lcz4py_get_lst(
+        raster_path,
+        source=fonte,
+        start_date=inicio.isoformat(),
+        end_date=fim.isoformat(),
+        verbose=False,
+    )
+
+
+def lcz_grid_poluicao(raster_path, poluente="pm25"):
+    """
+    Baixa a grade anual mais recente de um poluente do ar (dataset GHAP),
+    recortada na área do mapa LCZ já baixado.
+
+    Wrapper fino sobre LCZ4py.general.lcz_grid_pollution_ghap: fixa o ano mais
+    recente disponível em vez do padrão da lib (todo o histórico 2017-2022),
+    para baixar 1 banda em vez de ~6.
+
+    Parameters
+    ----------
+    raster_path : str
+        Caminho do GeoTIFF do mapa LCZ recortado
+    poluente : {"pm25", "o3", "co"}
+        Poluente a baixar (PM2.5 e CO: dados até 2022; O3: até 2020)
+
+    Returns
+    -------
+    LCZ4py.general.LCZGridResult
+        `.array` é (1, altura, largura); µg/m³ para PM2.5, ppb para O3/CO
+    """
+    from LCZ4py.general import lcz_grid_pollution_ghap as _lcz4py_ghap
+
+    ano = _GHAP_ULTIMO_ANO.get(poluente, 2022)
+    return _lcz4py_ghap(
+        raster_path,
+        pollutants=poluente,
+        resolution="annual",
+        years=[ano],
+        verbose=False,
+    )
 

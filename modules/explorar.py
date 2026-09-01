@@ -320,19 +320,22 @@ def renderizar_aba_temperatura_superficie():
 
 
 def renderizar_aba_qualidade_ar():
-    """Qualidade do ar (PM2.5/O3/CO) — grade anual recortada na área do mapa."""
+    """Qualidade do ar (O3/CO/PM2.5) — grade anual recortada na área do mapa."""
     st.markdown(
         "Zonas com mais construções e tráfego tendem a concentrar mais poluentes do ar. "
-        "O **PM2.5** (partículas finas) é o poluente mais associado a problemas respiratórios."
+        "As grades abaixo vêm do dataset GHAP (Zenodo), sem necessidade de conta ou API key."
     )
 
+    # Ozônio/CO primeiro: o dataset de PM2.5 no Zenodo está com acesso restrito
+    # no momento (ver nota abaixo), então o padrão do rádio já cai numa opção
+    # que funciona.
     poluente_label = st.radio(
-        "Poluente", ["PM2.5", "Ozônio (O₃)", "Monóxido de carbono (CO)"], horizontal=True,
+        "Poluente", ["Ozônio (O₃)", "Monóxido de carbono (CO)", "PM2.5"], horizontal=True,
     )
-    poluente = {"PM2.5": "pm25", "Ozônio (O₃)": "o3", "Monóxido de carbono (CO)": "co"}[poluente_label]
+    poluente = {"Ozônio (O₃)": "o3", "Monóxido de carbono (CO)": "co", "PM2.5": "pm25"}[poluente_label]
 
     if st.session_state.lcz_pollution_result is None or st.session_state.lcz_pollution_poluente != poluente:
-        st.caption("Baixa 1 grade anual (dataset GHAP, sem necessidade de conta/API key) recortada na área do mapa.")
+        st.caption("Baixa 1 grade anual recortada na área do mapa.")
         if st.button("🏭 Carregar qualidade do ar"):
             with st.spinner("Baixando grade de poluição..."):
                 try:
@@ -342,7 +345,14 @@ def renderizar_aba_qualidade_ar():
                     )
                     st.session_state.lcz_pollution_poluente = poluente
                 except Exception as e:
-                    st.error(f"Não foi possível baixar a qualidade do ar: {e}")
+                    if poluente == "pm25":
+                        st.error(
+                            "Não foi possível baixar o PM2.5: o dataset (GlobalHighPM2.5, no Zenodo) "
+                            "está atualmente com acesso restrito na fonte, fora do nosso controle. "
+                            "Tente Ozônio ou Monóxido de carbono, que continuam de acesso público."
+                        )
+                    else:
+                        st.error(f"Não foi possível baixar a qualidade do ar: {e}")
         return
 
     resultado = st.session_state.lcz_pollution_result

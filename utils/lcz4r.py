@@ -750,6 +750,7 @@ def lcz_get_lst(raster_path, dias=3, fonte="sentinel3"):
         start_date=inicio.isoformat(),
         end_date=fim.isoformat(),
         verbose=False,
+        lang="pt",
     )
 
 
@@ -783,5 +784,6 @@ def lcz_grid_poluicao(raster_path, poluente="pm25"):
         resolution="annual",
         years=[ano],
         verbose=False,
+        lang="pt",
     )
 

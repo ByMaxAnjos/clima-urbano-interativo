@@ -14,11 +14,17 @@ rasterio
 requests
 xarray
 h5netcdf
-# xarray e h5netcdf são usados por lcz_get_lst e lcz_grid_pollution_ghap
-# (temperatura de superfície e qualidade do ar em Explorar), mas não estão nas
-# dependências core do LCZ4py apesar de serem necessários em tempo de
-# execução (xarray com engine="h5netcdf" para ler os arquivos do Sentinel-3)
-# — sem isso, ImportError/erro ao abrir o arquivo.
+pystac-client
+planetary-computer
+# xarray/h5netcdf e pystac-client/planetary-computer são usados por
+# lcz_get_lst (temperatura de superfície) e lcz_grid_pollution_ghap
+# (qualidade do ar), ambos em Explorar, mas não estão nas dependências core
+# do LCZ4py apesar de serem necessários em tempo de execução: xarray com
+# engine="h5netcdf" para ler os arquivos do Sentinel-3, e pystac-client +
+# planetary-computer para localizar as cenas Sentinel-3 no catálogo STAC do
+# Planetary Computer (import lazy, só falha quando source="sentinel3" é
+# realmente usado — por isso passou despercebido em teste local, onde os
+# dois já estavam instalados por outro motivo).
 #
 # LCZ4py não está publicado no PyPI ainda — instalado direto do GitHub
 # (traz como dependências: polars, pyarrow, scipy, httpx, aiohttp, rioxarray,

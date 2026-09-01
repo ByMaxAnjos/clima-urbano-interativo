@@ -10,6 +10,7 @@ https://colab.research.google.com/drive/1ZdReMbnI_7VSSS0ALpnb-O1Mie2BnPKw
 import os
 import warnings
 import tempfile
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -22,6 +23,58 @@ from urllib3.exceptions import NewConnectionError
 
 # Configurações
 warnings.filterwarnings("ignore")
+
+# Diretório de cache em disco compartilhado por todos os downloads pesados da
+# LCZ4py (mapa LCZ, parâmetros urbanos, Sentinel-2) — mesmo padrão que a
+# própria LCZ4py já usa para a maioria das suas funções, exceto lcz_get_ucp
+# (que por padrão usa outro diretório); apontamos explicitamente para este
+# aqui em cada wrapper para manter um único local, governado por
+# `_podar_cache_lcz4py`.
+CACHE_DIR_LCZ4PY = os.path.expanduser("~/.lcz4r_cache")
+
+# Teto de tamanho do cache, em MB. No Streamlit Community Cloud o app roda num
+# contêiner compartilhado por TODOS os usuários simultâneos, com disco efêmero
+# e limitado — sem este teto, o cache (que a LCZ4py grava em disco sem nenhum
+# limite de tamanho) cresceria sem parar a cada nova cidade/parâmetro/índice
+# explorado, até encher o disco e derrubar o app para todo mundo, não só para
+# quem gerou o cache. 500 MB é conservador: sobra espaço para o resto do app
+# (Python, GDAL/rasterio, etc.) no plano gratuito.
+CACHE_LIMITE_MB = 500
+
+
+def _podar_cache_lcz4py(cache_dir=CACHE_DIR_LCZ4PY, limite_mb=CACHE_LIMITE_MB):
+    """
+    Mantém o cache de downloads da LCZ4py sob um teto de tamanho, removendo
+    primeiro os arquivos acessados há mais tempo (aproximação de LRU) até
+    caber no limite.
+
+    Roda em best-effort — qualquer erro aqui é silenciado, porque poda de
+    cache nunca deve interromper o fluxo principal (mostrar o mapa/parâmetro/
+    índice ao usuário).
+    """
+    try:
+        base = Path(os.path.expanduser(cache_dir))
+        if not base.exists():
+            return
+
+        arquivos = [p for p in base.rglob("*") if p.is_file()]
+        limite_bytes = limite_mb * 1024 * 1024
+        total = sum(p.stat().st_size for p in arquivos)
+        if total <= limite_bytes:
+            return
+
+        arquivos.sort(key=lambda p: p.stat().st_atime)
+        for p in arquivos:
+            if total <= limite_bytes:
+                break
+            try:
+                tamanho = p.stat().st_size
+                p.unlink()
+                total -= tamanho
+            except OSError:
+                continue
+    except Exception:
+        pass
 
 # Informações LCZ (constante global)
 LCZ_INFO = pd.DataFrame({
@@ -108,6 +161,18 @@ LCZ_INFO = pd.DataFrame({
         "Proteger e integrar áreas aquáticas ao tecido urbano."
     ]
 })
+
+# Paleta oficial das classes LCZ (Stewart & Oke, 2012 / WUDAPT — mesmos hex do
+# LCZ4py). Fonte única: reaproveitada por Explorar, Visualizar e lcz_cal_area
+# abaixo, em vez de manter cópias divergentes em cada módulo.
+CORES_LCZ = {
+    'LCZ 1': '#910613', 'LCZ 2': '#D9081C', 'LCZ 3': '#FF0A22', 'LCZ 4': '#C54F1E',
+    'LCZ 5': '#FF6628', 'LCZ 6': '#FF985E', 'LCZ 7': '#FDED3F', 'LCZ 8': '#BBBBBB',
+    'LCZ 9': '#FFCBAB', 'LCZ 10': '#565656', 'LCZ A': '#006A18', 'LCZ B': '#00A926',
+    'LCZ C': '#628432', 'LCZ D': '#B5DA7F', 'LCZ E': '#000000', 'LCZ F': '#FCF7B1',
+    'LCZ G': '#656BFA'
+}
+
 
 def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False, return_path=False):
     """
@@ -213,6 +278,8 @@ def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False, return
             r.raise_for_status()
             with open(global_path, "wb") as f:
                 shutil.copyfileobj(r.raw, f)
+
+    _podar_cache_lcz4py()
 
     if return_path:
         return data, profile, clipped_path
@@ -540,14 +607,7 @@ def lcz_cal_area(gdf, return_stats=True, return_plot_data=True, raster_path=None
         'areas': area_stats['area_total_km2'].tolist(),
         'percentuais': area_stats['percentual'].tolist(),
         'num_poligonos': area_stats['num_poligonos'].tolist(),
-        'cores_lcz': {
-            'LCZ 1': '#910613', 'LCZ 2': '#D9081C', 'LCZ 3': '#FF0A22', 
-            'LCZ 4': '#C54F1E', 'LCZ 5': '#FF6628', 'LCZ 6': '#FF985E',
-            'LCZ 7': '#FDED3F', 'LCZ 8': '#BBBBBB', 'LCZ 9': '#FFCBAB',
-            'LCZ 10': '#565656', 'LCZ A': '#006A18', 'LCZ B': '#00A926',
-            'LCZ C': '#628432', 'LCZ D': '#B5DA7F', 'LCZ E': '#000000',
-            'LCZ F': '#FCF7B1', 'LCZ G': '#656BFA'
-        }
+        'cores_lcz': CORES_LCZ,
     }
     
     # Resumo geral
@@ -702,88 +762,413 @@ def validate_lcz_data(gdf):
     return validation_result
 
 
-# Ano anual mais recente disponível por poluente no dataset GHAP (ver
-# LCZ4py.general.lcz_grid_pollution_ghap._AVAIL_YEARS) — usado para baixar só
-# 1 banda em vez de todo o histórico, mantendo o download leve no Streamlit Cloud.
-_GHAP_ULTIMO_ANO = {"pm25": 2022, "o3": 2020, "co": 2022}
+# Descrições didáticas dos Parâmetros Urbanos de Superfície (UCP) mais
+# relevantes para o tema da plataforma (morfologia urbana x ilha de calor);
+# variáveis que a LCZ4py processe mas não estejam aqui aparecem com seu nome
+# técnico mesmo (o processamento não fica limitado a esta lista).
+UCP_DESCRICOES = {
+    "built_hei": "Altura média das edificações (m) — quanto maior, mais a área retém calor à noite (efeito 'canyon urbano').",
+    "built_sur": "Fração de superfície construída (%) — telhados e pavimento substituem vegetação, elevando a temperatura.",
+    "built_vol": "Volume construído por área (m³) — combina altura e densidade de ocupação do solo.",
+    "pop": "Densidade populacional (hab/célula) — proxy de atividade humana e emissão de calor antrópico.",
+    "tree": "Cobertura arbórea (%) — árvores resfriam por sombreamento e evapotranspiração.",
+    "urban": "Fração de área urbanizada (%) — quanto mais urbanizado, maior a tendência de ilha de calor.",
+    "urban_frc": "Fração urbana (%) — mesma leitura de 'urban', em fonte de dado diferente.",
+    "elevation": "Elevação do terreno (m) — influencia drenagem de ar frio e microclima local.",
+    "hgt": "Altura do dossel/vegetação (m) — porte médio da cobertura vegetal na célula.",
+    "frc_esa": "Fração de cobertura do solo (ESA WorldCover) — uso e ocupação do solo.",
+    "cglc": "Classe de cobertura do solo (GLC_FCS30D) — categoria dominante de uso do solo.",
+    "lb": "Comprimento médio das edificações (m) — dimensão típica dos edifícios na célula (WUMPOD).",
+    "lc": "Fração de cobertura por edificações — quanto do solo é ocupado por construções (WUMPOD).",
+    "lf": "Fração de terreno (não-água/não-vegetação) — proxy de área disponível para uso urbano (WUMPOD).",
+    "lp": "Perímetro médio das edificações (m) — relacionado à complexidade da forma dos edifícios (WUMPOD).",
+}
+
+# Categoria de processamento (== grupo de download) de cada variável do UCP na
+# LCZ4py, e a fonte/unidade de cada uma — usadas para (1) só disparar o
+# download da categoria realmente selecionada pelo usuário (lcz_get_ucp baixa
+# cada categoria inteira de uma vez, não variável por variável) e (2) montar
+# título/legenda informativos no mapa.
+UCP_CATEGORIA = {
+    "built_hei": "ghsl", "built_sur": "ghsl", "built_vol": "ghsl", "pop": "ghsl",
+    "elevation": "wumpod", "frc_esa": "wumpod", "hgt": "wumpod", "lb": "wumpod",
+    "lc": "wumpod", "lf": "wumpod", "lp": "wumpod", "urban_frc": "wumpod", "cglc": "wumpod",
+    "tree": "vegetacao", "urban": "vegetacao",
+}
+UCP_FONTE_CATEGORIA = {
+    "ghsl": "Global Human Settlement Layer (GHSL), Comissão Europeia/JRC",
+    "wumpod": "WUMPOD (Patel & Roth) e conjuntos associados (Zenodo)",
+    "vegetacao": "GLC_FCS30D (Zhang et al., 2021)",
+}
+UCP_UNIDADE = {
+    "built_hei": "m", "built_sur": "m²/m²", "built_vol": "m³", "pop": "hab/km²",
+    "elevation": "m", "frc_esa": "fração", "hgt": "m", "lb": "m", "lc": "fração",
+    "lf": "fração", "lp": "m", "urban_frc": "%", "cglc": "classe",
+    "tree": "%", "urban": "%",
+}
+UCP_PALETA = {
+    "built_hei": "YlOrRd", "built_sur": "YlOrRd", "built_vol": "YlOrRd",
+    "pop": "OrRd", "urban": "YlOrRd", "urban_frc": "YlOrRd",
+    "tree": "Greens", "hgt": "Greens", "elevation": "Viridis",
+    "frc_esa": "Earth", "cglc": "Earth", "lb": "Cividis", "lc": "Cividis",
+    "lf": "Cividis", "lp": "Cividis",
+}
+UCP_INTERPRETACAO = {
+    "built_hei": "Valores altos indicam edifícios mais altos e maior potencial de cânions urbanos.",
+    "built_sur": "Valores altos indicam maior presença de telhados/pavimentos e menor superfície permeável.",
+    "built_vol": "Valores altos combinam densidade e verticalização da forma urbana.",
+    "pop": "Valores altos indicam maior concentração de pessoas e atividade urbana.",
+    "tree": "Valores altos indicam maior sombreamento e evapotranspiração, associados a resfriamento local.",
+    "urban": "Valores altos indicam maior fração urbanizada.",
+    "urban_frc": "Valores altos indicam maior fração urbana segundo a fonte WUMPOD.",
+    "elevation": "Diferenças de altitude ajudam a interpretar drenagem de ar frio e exposição topográfica.",
+    "hgt": "Valores altos indicam vegetação mais alta ou dossel mais desenvolvido.",
+}
+
+# Catálogo didático de índices espectrais oferecido ao usuário — um
+# subconjunto (vegetação, água, urbano) do catálogo completo da LCZ4py
+# (~30 índices), para manter as opções claras para fins de ensino.
+INDICES_ESPECTRAIS_DESCRICOES = {
+    "NDVI": "Índice de Vegetação (NDVI) — varia de -1 a 1; quanto mais próximo de 1, mais vegetação densa e saudável.",
+    "SAVI": "Índice de Vegetação Ajustado ao Solo (SAVI) — como o NDVI, mas corrige a influência do solo exposto em áreas com pouca vegetação.",
+    "NDBI": "Índice de Área Construída (NDBI) — valores positivos indicam superfícies construídas/impermeáveis.",
+    "UI": "Índice Urbano (UI) — realça áreas construídas de forma parecida ao NDBI, útil para comparar os dois.",
+    "MNDWI": "Índice de Água (MNDWI) — valores positivos indicam presença de água (rios, lagos, represas).",
+    "BSI": "Índice de Solo Exposto (BSI) — valores altos indicam solo nu ou pavimento sem vegetação nem água.",
+}
+# Pré-seleção sugerida ao usuário: um índice de cada tema (vegetação/urbano/água).
+INDICES_ESPECTRAIS_PADRAO = ["NDVI", "NDBI", "MNDWI"]
+# Todos os índices deste catálogo didático variam nesta faixa (LCZ4py.PARAM_UNITS).
+INDICES_ESPECTRAIS_FAIXA = "-1 a 1"
+INDICES_ESPECTRAIS_TEMA = {
+    "NDVI": "Vegetação",
+    "SAVI": "Vegetação",
+    "NDBI": "Construção",
+    "UI": "Construção",
+    "MNDWI": "Água",
+    "BSI": "Solo exposto",
+}
+INDICES_ESPECTRAIS_FONTE = (
+    "Sentinel-2 L2A (Copernicus/ESA), acessado via Microsoft Planetary Computer; "
+    "estatísticas por LCZ calculadas com LCZ4py."
+)
 
 
-def lcz_get_lst(raster_path, dias=3, fonte="sentinel3"):
+def _ajustar_layout_plotly(fig, title=None, height=560, legend=True):
+    """Aplica um tema legível aos gráficos gerados pela LCZ4py."""
+    fig.update_layout(
+        title=dict(text=title, x=0.02, xanchor="left", font=dict(size=21)) if title else fig.layout.title,
+        height=height,
+        margin=dict(l=28, r=28, t=78, b=62),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(248,250,252,0.82)",
+        font=dict(family="Arial, sans-serif", size=15, color="#163044"),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.03,
+            xanchor="left",
+            x=0,
+            title=dict(font=dict(size=15)),
+            font=dict(size=14),
+        ),
+        showlegend=legend,
+        hoverlabel=dict(bgcolor="white", font_size=14, font_family="Arial, sans-serif"),
+    )
+    fig.update_xaxes(
+        title_font=dict(size=16),
+        tickfont=dict(size=13),
+        gridcolor="rgba(148,163,184,0.22)",
+        zeroline=False,
+    )
+    fig.update_yaxes(
+        title_font=dict(size=16),
+        tickfont=dict(size=13),
+        gridcolor="rgba(148,163,184,0.18)",
+        zeroline=False,
+    )
+    return fig
+
+
+def lcz_get_parametros_urbanos(raster_path, variables=None, cache_dir=CACHE_DIR_LCZ4PY):
     """
-    Baixa uma série curta e recente de Temperatura de Superfície (LST) por
-    satélite, recortada na área do mapa LCZ já baixado.
+    Baixa e processa Parâmetros Urbanos de Superfície (UCP) — altura e volume
+    construído, cobertura arbórea, densidade populacional, etc. — como uma
+    pilha de rasters recortada na área do mapa LCZ já baixado.
 
-    Wrapper fino sobre LCZ4py.general.lcz_get_lst: fixa uma janela curta
-    (`dias`) e recente em vez de deixar o intervalo em aberto, para manter o
-    download leve o suficiente para rodar no Streamlit Cloud. `dias=3` é o
-    padrão porque cada dia do Sentinel-3 baixa 2 arquivos sequenciais
-    (~40-50s/dia) — 7 dias levaria minutos.
+    Wrapper fino sobre LCZ4py.general.lcz_get_ucp: chama sem `stations`, que
+    faz a função devolver diretamente a pilha de rasters (`combined_rasters`)
+    em vez de extrair valores pontuais, já que a plataforma explora a área
+    como um todo em vez de estações específicas.
+
+    Liga só as categorias de download (`process_ghsl`/`process_wumpod`/
+    `process_vegetation`) que cobrem os `variables` pedidos, e desliga sempre
+    `process_directional` (16 variáveis direcionais que esta plataforma não
+    oferece). Por padrão, a LCZ4py liga as 4 categorias inteiras (>20
+    variáveis, incluindo as 16 direcionais nunca usadas aqui) mesmo que
+    `variables` peça só 1 parâmetro — isso é o que deixava o download lento
+    e, quando alguma categoria não pedida falhava, fazia sobrar só 1 parâmetro
+    disponível para plotar.
+
+    Nota: dentro da LCZ4py, `variables` só filtra as categorias WUMPOD/
+    vegetação — a categoria GHSL (altura, superfície e volume construído,
+    população) é baixada e processada como bloco único, então pedir 1
+    variável GHSL sempre traz as outras 3 junto.
 
     Parameters
     ----------
     raster_path : str
         Caminho do GeoTIFF do mapa LCZ recortado (o mesmo usado por lcz_cal_area)
-    dias : int, default 3
-        Número de dias da série — cada dia é uma banda a mais no raster
-        baixado, e no Sentinel-3 cada dia custa ~40-50s de download
-    fonte : {"sentinel3", "goes"}
-        "sentinel3" é global (~1 km) — a opção padrão, pois cobre qualquer
-        cidade brasileira; "goes" na LCZ4py atual só cobre a área CONUS dos
-        EUA (14°N-55°N), então não serve para nenhuma cidade do Brasil apesar
-        do nome sugerir cobertura das Américas — mantido como opção só para
-        cidades norte-americanas.
+    variables : list of str, optional
+        Parâmetros a processar (ver `UCP_DESCRICOES`); por padrão processa
+        todos os parâmetros disponíveis — passe uma lista para deixar a
+        escolha explícita para o usuário e reduzir o tempo de download.
+    cache_dir : str
+        Diretório de cache dos dados brutos baixados (GHSL, WUMPOD, etc.) —
+        por padrão o mesmo `CACHE_DIR_LCZ4PY` usado pelo mapa LCZ e pelo
+        Sentinel-2, para que a poda de cache (`_podar_cache_lcz4py`) governe
+        um único diretório em vez de vários crescendo sem controle.
 
     Returns
     -------
-    LCZ4py.general.LCZLSTResult
-        `.array` é (n_dias, altura, largura) em °C; `.dates` lista as datas (ISO)
+    dict
+        Ver LCZ4py.general.lcz_get_ucp — usa-se aqui `combined_rasters`
+        (xarray.Dataset) e `variable_list`.
     """
-    from datetime import date, timedelta
-    from LCZ4py.general import lcz_get_lst as _lcz4py_get_lst
+    from LCZ4py.general import lcz_get_ucp as _lcz4py_get_ucp
 
-    fim = date.today() - timedelta(days=4)  # latência típica de processamento do satélite
-    inicio = fim - timedelta(days=dias - 1)
+    if variables:
+        categorias = {UCP_CATEGORIA.get(v) for v in variables}
+    else:
+        categorias = {"ghsl", "wumpod", "vegetacao"}
 
-    return _lcz4py_get_lst(
-        raster_path,
-        source=fonte,
-        start_date=inicio.isoformat(),
-        end_date=fim.isoformat(),
+    resultado = _lcz4py_get_ucp(
+        lcz_map=raster_path,
+        stations=None,
+        variables=variables,
+        cache_dir=cache_dir,
+        process_ghsl="ghsl" in categorias,
+        process_wumpod="wumpod" in categorias,
+        process_vegetation="vegetacao" in categorias,
+        process_directional=False,
         verbose=False,
-        lang="pt",
     )
+    _podar_cache_lcz4py(cache_dir)
+    return resultado
 
 
-def lcz_grid_poluicao(raster_path, poluente="pm25"):
+def lcz_plot_parametro_urbano(ucp_result, parametro):
     """
-    Baixa a grade anual mais recente de um poluente do ar (dataset GHAP),
-    recortada na área do mapa LCZ já baixado.
+    Gera o mapa interativo (Plotly) de um Parâmetro Urbano de Superfície já
+    processado por `lcz_get_parametros_urbanos`, com título, legenda (unidade)
+    e nota de fonte de dados preenchidos — a LCZ4py só conhece as unidades dos
+    ~34 parâmetros morfológicos clássicos (Stewart & Oke), não as dos UCP.
 
-    Wrapper fino sobre LCZ4py.general.lcz_grid_pollution_ghap: fixa o ano mais
-    recente disponível em vez do padrão da lib (todo o histórico 2017-2022),
-    para baixar 1 banda em vez de ~6.
+    Wrapper fino sobre LCZ4py.general.lcz_plot_parameters.
+
+    Parameters
+    ----------
+    ucp_result : dict
+        Resultado de `lcz_get_parametros_urbanos`
+    parametro : str
+        Nome da variável a plotar (um dos itens de `ucp_result['variable_list']`)
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+    """
+    from LCZ4py.general import lcz_plot_parameters as _lcz4py_plot_parameters
+
+    descricao = UCP_DESCRICOES.get(parametro, parametro)
+    categoria = UCP_CATEGORIA.get(parametro)
+    fonte = UCP_FONTE_CATEGORIA.get(categoria, "LCZ4py")
+    unidade = UCP_UNIDADE.get(parametro, "")
+
+    fig = _lcz4py_plot_parameters(
+        ucp_result["combined_rasters"], iselect=parametro,
+        title=f"{parametro} — {descricao.split(' — ')[0]}",
+        subtitle=f"Fonte: {fonte}",
+        caption="Processado com LCZ4py (github.com/ByMaxAnjos/LCZ4py)",
+    )
+    _ajustar_layout_plotly(
+        fig,
+        title=f"{parametro} — {descricao.split(' — ')[0]}",
+        height=620,
+        legend=True,
+    )
+    for trace in fig.data:
+        if hasattr(trace, "coloraxis"):
+            trace.coloraxis = "coloraxis"
+        if hasattr(trace, "hovertemplate"):
+            trace.hovertemplate = (
+                f"<b>{parametro}</b><br>Valor: %{{z:.2f}} {unidade}<extra></extra>"
+                if unidade else f"<b>{parametro}</b><br>Valor: %{{z:.2f}}<extra></extra>"
+            )
+    fig.update_layout(
+        coloraxis=dict(
+            colorscale=UCP_PALETA.get(parametro, "Viridis"),
+            colorbar=dict(
+                title=dict(text=unidade or parametro, font=dict(size=16)),
+                tickfont=dict(size=13),
+                len=0.78,
+                thickness=18,
+            ),
+        ),
+        annotations=[
+            dict(
+                text=f"Fonte: {fonte} · Processado com LCZ4py",
+                xref="paper", yref="paper", x=0, y=-0.08,
+                showarrow=False, xanchor="left", font=dict(size=13, color="#475569"),
+            )
+        ],
+    )
+    return fig
+
+
+# Bandas do Sentinel-2 L2A necessárias para cobrir todo o catálogo didático em
+# INDICES_ESPECTRAIS_DESCRICOES: red/green/blue/nir (B04/B03/B02/B08) cobrem
+# NDVI/SAVI; NDBI, UI, MNDWI e BSI também precisam de swir1/swir2 (B11/B12) —
+# o atalho "sentinel-2-l2a" da LCZ4py baixa só B04/B03/B02/B08 por padrão, o
+# que faz esses 4 índices falharem com "banda(s) faltante(s): swir1/swir2".
+BANDAS_SENTINEL2 = ["B04", "B03", "B02", "B08", "B11", "B12"]
+
+
+def lcz_baixar_sentinel2(raster_path, dias=90, cobertura_nuvem_max=30):
+    """
+    Baixa bandas do Sentinel-2 (Microsoft Planetary Computer) recortadas na
+    área do mapa LCZ já baixado, para uso no cálculo de índices espectrais.
+
+    Wrapper fino sobre LCZ4py.general.lcz_get_planetary_computer: fixa uma
+    janela recente (`dias`) em vez de deixar o intervalo em aberto, para
+    manter o download leve o suficiente para rodar no Streamlit Cloud, e pede
+    explicitamente `BANDAS_SENTINEL2` (em vez do atalho padrão da coleção, que
+    só traz 4 bandas) para que todo índice do catálogo didático consiga ser
+    calculado.
 
     Parameters
     ----------
     raster_path : str
         Caminho do GeoTIFF do mapa LCZ recortado
-    poluente : {"pm25", "o3", "co"}
-        Poluente a baixar (PM2.5 e CO: dados até 2022; O3: até 2020)
+    dias : int, default 90
+        Tamanho da janela de busca por imagens recentes com pouca nuvem
+    cobertura_nuvem_max : float, default 30
+        Cobertura de nuvem máxima aceita (%) nas cenas usadas
 
     Returns
     -------
-    LCZ4py.general.LCZGridResult
-        `.array` é (1, altura, largura); µg/m³ para PM2.5, ppb para O3/CO
+    LCZ4py.general.LCZPCResult
+        `.array` é (n_bandas, altura, largura); `.bands` nomeia cada banda
     """
-    from LCZ4py.general import lcz_grid_pollution_ghap as _lcz4py_ghap
+    from datetime import date, timedelta
+    from LCZ4py.general import lcz_get_planetary_computer as _lcz4py_get_pc
 
-    ano = _GHAP_ULTIMO_ANO.get(poluente, 2022)
-    return _lcz4py_ghap(
+    fim = date.today()
+    inicio = fim - timedelta(days=dias)
+
+    resultado = _lcz4py_get_pc(
         raster_path,
-        pollutants=poluente,
-        resolution="annual",
-        years=[ano],
+        collection="sentinel-2-l2a",
+        assets=BANDAS_SENTINEL2,
+        start_date=inicio.isoformat(),
+        end_date=fim.isoformat(),
+        max_cloud_cover=cobertura_nuvem_max,
+        cache_dir=CACHE_DIR_LCZ4PY,
         verbose=False,
         lang="pt",
     )
+    _podar_cache_lcz4py()
+    return resultado
 
+
+def lcz_calcular_indices(pc_result, indices=None):
+    """
+    Calcula índices espectrais a partir das bandas do Sentinel-2 baixadas por
+    `lcz_baixar_sentinel2`.
+
+    Wrapper fino sobre LCZ4py.general.lcz_get_indices: por padrão restringe ao
+    catálogo didático `INDICES_ESPECTRAIS_DESCRICOES` (~6 índices) em vez do
+    catálogo completo da LCZ4py (~30), mantendo as opções claras para ensino
+    e o processamento leve.
+
+    Parameters
+    ----------
+    pc_result : LCZ4py.general.LCZPCResult
+        Resultado de `lcz_baixar_sentinel2`
+    indices : list of str, optional
+        Índices a calcular (ver `INDICES_ESPECTRAIS_DESCRICOES`); por padrão
+        usa `INDICES_ESPECTRAIS_PADRAO`.
+
+    Returns
+    -------
+    LCZ4py.general.LCZIndicesResult
+    """
+    from LCZ4py.general import lcz_get_indices as _lcz4py_get_indices
+
+    return _lcz4py_get_indices(pc_result, indices=indices or INDICES_ESPECTRAIS_PADRAO, lang="pt")
+
+
+def lcz_estatisticas_indices(raster_path, indices_result):
+    """
+    Estatísticas descritivas por classe LCZ dos índices espectrais, com um
+    gráfico de caixas (boxplot) comparando a distribuição de cada índice
+    entre as classes LCZ da área.
+
+    Wrapper fino sobre LCZ4py.general.lcz_cal_indices: preenche `subtitle`/
+    `caption` com a fonte dos dados (a LCZ4py só anota título/legenda quando
+    pedido explicitamente) e acrescenta a faixa de valores de cada índice
+    (a LCZ4py não rotula isso nos títulos dos subgráficos).
+
+    Parameters
+    ----------
+    raster_path : str
+        Caminho do GeoTIFF do mapa LCZ recortado (mesma grade dos índices)
+    indices_result : LCZ4py.general.LCZIndicesResult
+        Resultado de `lcz_calcular_indices`
+
+    Returns
+    -------
+    LCZ4py.general.LCZIndicesStatsResult
+        `.df` tem uma linha por (índice, classe LCZ); `.fig['box']` é o
+        gráfico Plotly
+    """
+    from LCZ4py.general import lcz_cal_indices as _lcz4py_cal_indices
+
+    resultado = _lcz4py_cal_indices(
+        raster_path, indices_result, plot_type="box", lang="pt",
+        subtitle="Fonte: Sentinel-2 (Copernicus/ESA) via Microsoft Planetary Computer",
+        caption="Processado com LCZ4py (github.com/ByMaxAnjos/LCZ4py)",
+    )
+    for annotation in resultado.fig.layout.annotations or []:
+        if annotation.text in INDICES_ESPECTRAIS_DESCRICOES:
+            annotation.text = f"{annotation.text} [{INDICES_ESPECTRAIS_FAIXA}]"
+            annotation.font = dict(size=15, color="#163044")
+    _ajustar_layout_plotly(
+        resultado.fig,
+        title="Distribuição dos índices espectrais por classe LCZ",
+        height=620,
+        legend=True,
+    )
+    for trace in resultado.fig.data:
+        nome = str(getattr(trace, "name", ""))
+        if nome in CORES_LCZ and hasattr(trace, "marker"):
+            trace.marker.color = CORES_LCZ[nome]
+            trace.marker.line = dict(color="#163044", width=0.8)
+        if hasattr(trace, "line") and nome in CORES_LCZ:
+            trace.line.color = CORES_LCZ[nome]
+        if hasattr(trace, "boxmean"):
+            trace.boxmean = "sd"
+        if hasattr(trace, "jitter"):
+            trace.jitter = 0.28
+        if hasattr(trace, "pointpos"):
+            trace.pointpos = -1.45
+    resultado.fig.update_layout(
+        boxmode="group",
+        annotations=list(resultado.fig.layout.annotations or []) + [
+            dict(
+                text=f"Fonte: {INDICES_ESPECTRAIS_FONTE}",
+                xref="paper", yref="paper", x=0, y=-0.1,
+                showarrow=False, xanchor="left", font=dict(size=13, color="#475569"),
+            )
+        ],
+    )
+    return resultado

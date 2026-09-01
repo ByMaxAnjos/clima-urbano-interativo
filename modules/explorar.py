@@ -3,21 +3,10 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import plotly.express as px
-import plotly.graph_objects as go
-import numpy as np
 import time
 import json
 
-from utils.lcz4r import lcz_get_map, process_lcz_map, enhance_lcz_data, lcz_plot_map
-
-# Paleta oficial das classes LCZ (Stewart & Oke, 2012 / WUDAPT).
-CORES_LCZ = {
-    'LCZ 1': '#910613', 'LCZ 2': '#D9081C', 'LCZ 3': '#FF0A22', 'LCZ 4': '#C54F1E',
-    'LCZ 5': '#FF6628', 'LCZ 6': '#FF985E', 'LCZ 7': '#FDED3F', 'LCZ 8': '#BBBBBB',
-    'LCZ 9': '#FFCBAB', 'LCZ 10': '#565656', 'LCZ A': '#006A18', 'LCZ B': '#00A926',
-    'LCZ C': '#628432', 'LCZ D': '#B5DA7F', 'LCZ E': '#000000', 'LCZ F': '#FCF7B1',
-    'LCZ G': '#656BFA'
-}
+from utils.lcz4r import lcz_get_map, process_lcz_map, enhance_lcz_data, lcz_plot_map, CORES_LCZ
 
 
 def init_session_state():
@@ -33,9 +22,12 @@ def init_session_state():
         'lcz_area_stats': None,
         'lcz_plot_data': None,
         'lcz_area_summary': None,
-        'lcz_lst_result': None,
-        'lcz_pollution_result': None,
-        'lcz_pollution_poluente': None,
+        'lcz_ucp_result': None,
+        'lcz_ucp_requested': [],
+        'lcz_pc_result': None,
+        'lcz_indices_result': None,
+        'lcz_indices_stats': None,
+        'lcz_indices_requested': [],
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -82,17 +74,17 @@ def renderizar_pagina():
 
     if st.session_state.lcz_data is not None:
         st.divider()
-        aba_mapa, aba_area, aba_temperatura, aba_poluicao = st.tabs([
-            "🗺️ Mapa", "📊 Área por Classe", "🌡️ Temperatura de Superfície", "🏭 Qualidade do Ar",
+        aba_mapa, aba_area, aba_ucp, aba_indices = st.tabs([
+            "🗺️ Mapa", "📊 Área por Classe", "🏙️ Parâmetros Urbanos", "🌿 Índices Espectrais",
         ])
         with aba_mapa:
             renderizar_aba_mapa()
         with aba_area:
             renderizar_aba_area()
-        with aba_temperatura:
-            renderizar_aba_temperatura_superficie()
-        with aba_poluicao:
-            renderizar_aba_qualidade_ar()
+        with aba_ucp:
+            renderizar_aba_parametros_urbanos()
+        with aba_indices:
+            renderizar_aba_indices_espectrais()
     else:
         st.info(
             "👆 Digite o nome de uma cidade acima e clique em **Gerar Mapa LCZ** para começar. "
@@ -157,6 +149,7 @@ def renderizar_aba_mapa():
         legend=dict(font=dict(size=15), title=dict(font=dict(size=16))),
     )
     st.plotly_chart(resultado.fig, use_container_width=True)
+    st.caption("Fonte: mapa global de LCZ (WUDAPT), obtido e recortado com LCZ4py.")
 
     with st.expander("⬇️ Baixar dados do mapa"):
         col1, col2 = st.columns(2)
@@ -256,8 +249,12 @@ def renderizar_aba_area():
         color='zcl_classe', color_discrete_map=CORES_LCZ,
         labels={'area_total_km2': 'Área total (km²)', 'zcl_classe': 'Classe LCZ'},
     )
-    fig.update_layout(showlegend=False, height=500, margin=dict(t=10))
+    fig.update_layout(
+        title=dict(text=f"Área por classe LCZ — {st.session_state.lcz_city_name or 'Cidade'}"),
+        showlegend=False, height=500, margin=dict(t=40),
+    )
     st.plotly_chart(fig, use_container_width=True)
+    st.caption("Fonte: mapa global de LCZ (WUDAPT); área calculada por contagem de pixels com LCZ4py.")
 
     with st.expander("📋 Tabela e mais opções"):
         st.dataframe(
@@ -270,105 +267,218 @@ def renderizar_aba_area():
                             f"lcz_area_{st.session_state.lcz_city_name}.csv", "text/csv")
 
 
-def _mapa_grade_media(array, titulo, colorscale, unidade):
-    """Heatmap Plotly leve (sem dependências extras) da média espacial de uma
-    grade (n_bandas, altura, largura), usada para LST e poluição do ar."""
-    media = np.nanmean(array, axis=0)
-    fig = go.Figure(go.Heatmap(z=media, colorscale=colorscale, colorbar_title=unidade))
-    fig.update_layout(title=titulo, height=420, yaxis=dict(scaleanchor='x'), margin=dict(t=40, b=10))
-    fig.update_xaxes(visible=False)
-    fig.update_yaxes(visible=False, autorange='reversed')
-    st.plotly_chart(fig, use_container_width=True)
-    return media
 
 
-def renderizar_aba_temperatura_superficie():
-    """Temperatura de Superfície (LST) por satélite — recorte da área do mapa."""
+def renderizar_aba_parametros_urbanos():
+    """Parâmetros Urbanos de Superfície (UCP) — morfologia da cidade que explica o efeito de cada classe LCZ."""
+    from utils.lcz4r import UCP_DESCRICOES, UCP_FONTE_CATEGORIA, UCP_CATEGORIA, UCP_INTERPRETACAO
+
     st.markdown(
-        "A **Temperatura de Superfície (LST)** é a temperatura que um satélite mede olhando para "
-        "o topo dos telhados, ruas e copas das árvores. É diferente da temperatura do ar que sentimos, "
-        "e costuma ser mais alta nas classes LCZ mais construídas e compactas."
+        "As classes LCZ descrevem o **padrão** da paisagem urbana; os **Parâmetros Urbanos de Superfície "
+        "(UCP)** medem diretamente os fatores físicos por trás do aquecimento — altura das edificações, "
+        "quanto solo está impermeabilizado, cobertura arbórea, densidade populacional, entre outros."
     )
 
-    if st.session_state.lcz_lst_result is None:
-        st.caption(
-            "Baixa 3 dias recentes de imagens de satélite (Sentinel-3) recortadas na área do mapa. "
-            "São poucos MB, mas pode levar 1-2 minutos (cada dia é baixado separadamente)."
+    if st.session_state.lcz_ucp_result is None:
+        st.markdown("##### Escolha os parâmetros que quer investigar")
+        opcoes = list(UCP_DESCRICOES.keys())
+        selecionados = st.multiselect(
+            "Parâmetros urbanos", opcoes,
+            default=["built_hei", "built_sur", "tree"],
+            format_func=lambda v: f"{v} — {UCP_DESCRICOES[v].split(' — ')[0]}",
+            label_visibility="collapsed",
         )
-        if st.button("🌡️ Carregar temperatura de superfície"):
-            with st.spinner("Baixando imagens de satélite..."):
-                try:
-                    from utils.lcz4r import lcz_get_lst
-                    st.session_state.lcz_lst_result = lcz_get_lst(st.session_state.lcz_raster_path)
-                except Exception as e:
-                    st.error(f"Não foi possível baixar a temperatura de superfície: {e}")
-        return
+        for variavel in selecionados:
+            st.caption(f"**{variavel}** — {UCP_DESCRICOES[variavel]}")
 
-    resultado = st.session_state.lcz_lst_result
-    cidade = st.session_state.lcz_city_name or "Cidade"
-    media = _mapa_grade_media(
-        resultado.array, f"LST média ({resultado.dates[0]} a {resultado.dates[-1]}) — {cidade}",
-        colorscale="RdYlBu_r", unidade="°C",
-    )
-    col1, col2 = st.columns(2)
-    col1.metric("Área mais fria", f"{np.nanmin(media):.1f} °C")
-    col2.metric("Área mais quente", f"{np.nanmax(media):.1f} °C")
-    st.caption(
-        "Compare este mapa com a aba **Mapa**: as áreas mais quentes tendem a coincidir com classes "
-        "LCZ compactas (1-3) e as mais frias, com árvores e vegetação (A-D)."
-    )
-
-
-def renderizar_aba_qualidade_ar():
-    """Qualidade do ar (O3/CO/PM2.5) — grade anual recortada na área do mapa."""
-    st.markdown(
-        "Zonas com mais construções e tráfego tendem a concentrar mais poluentes do ar. "
-        "As grades abaixo vêm do dataset GHAP (Zenodo), sem necessidade de conta ou API key."
-    )
-
-    # Ozônio/CO primeiro: o dataset de PM2.5 no Zenodo está com acesso restrito
-    # no momento (ver nota abaixo), então o padrão do rádio já cai numa opção
-    # que funciona.
-    poluente_label = st.radio(
-        "Poluente", ["Ozônio (O₃)", "Monóxido de carbono (CO)", "PM2.5"], horizontal=True,
-    )
-    poluente = {"Ozônio (O₃)": "o3", "Monóxido de carbono (CO)": "co", "PM2.5": "pm25"}[poluente_label]
-
-    if st.session_state.lcz_pollution_result is None or st.session_state.lcz_pollution_poluente != poluente:
-        st.caption("Baixa 1 grade anual recortada na área do mapa.")
-        if st.button("🏭 Carregar qualidade do ar"):
-            with st.spinner("Baixando grade de poluição..."):
-                try:
-                    from utils.lcz4r import lcz_grid_poluicao
-                    st.session_state.lcz_pollution_result = lcz_grid_poluicao(
-                        st.session_state.lcz_raster_path, poluente=poluente
-                    )
-                    st.session_state.lcz_pollution_poluente = poluente
-                except Exception as e:
-                    if poluente == "pm25":
-                        st.error(
-                            "Não foi possível baixar o PM2.5: o dataset (GlobalHighPM2.5, no Zenodo) "
-                            "está atualmente com acesso restrito na fonte, fora do nosso controle. "
-                            "Tente Ozônio ou Monóxido de carbono, que continuam de acesso público."
-                        )
-                    else:
-                        st.error(f"Não foi possível baixar a qualidade do ar: {e}")
-        return
-
-    resultado = st.session_state.lcz_pollution_result
-    cidade = st.session_state.lcz_city_name or "Cidade"
-    unidade = "µg/m³" if poluente == "pm25" else "ppb"
-    media = _mapa_grade_media(
-        resultado.array, f"{poluente_label} — média anual — {cidade}", colorscale="Reds", unidade=unidade,
-    )
-
-    if poluente == "pm25":
-        media_cidade = float(np.nanmean(media))
-        col1, col2 = st.columns(2)
-        col1.metric("Média da área", f"{media_cidade:.1f} µg/m³")
-        col2.metric("Limite anual recomendado pela OMS", "5 µg/m³")
-        if media_cidade > 5:
+        st.caption(
+            "Cada parâmetro escolhido baixa uma camada global (GHSL, WUMPOD ou cobertura do solo) recortada "
+            "na área do mapa — quanto mais grupos de fonte diferentes, mais tempo o download leva "
+            "(1-2 minutos por grupo)."
+        )
+        if any(UCP_DESCRICOES and v in {"built_hei", "built_sur", "built_vol", "pop"} for v in selecionados):
             st.caption(
-                f"A média da área está **{media_cidade / 5:.1f}x acima** do limite anual recomendado "
-                "pela Organização Mundial da Saúde (5 µg/m³)."
+                "ℹ️ Altura, superfície e volume construído e população vêm do mesmo conjunto de dados "
+                "(GHSL) e são sempre baixados juntos — ao escolher um deles, os outros três também "
+                "ficarão disponíveis para visualizar."
             )
+        if st.button("🏙️ Carregar parâmetros urbanos", disabled=not selecionados):
+            with st.spinner("Baixando e processando parâmetros urbanos..."):
+                try:
+                    from utils.lcz4r import lcz_get_parametros_urbanos
+                    st.session_state.lcz_ucp_requested = selecionados
+                    st.session_state.lcz_ucp_result = lcz_get_parametros_urbanos(
+                        st.session_state.lcz_raster_path, variables=selecionados
+                    )
+                except Exception as e:
+                    st.error(f"Não foi possível baixar os parâmetros urbanos: {e}")
+        return
+
+    resultado = st.session_state.lcz_ucp_result
+    variaveis = resultado["variable_list"]
+    if not variaveis:
+        st.warning("Nenhum parâmetro urbano ficou disponível para esta área.")
+        return
+
+    solicitados = st.session_state.get("lcz_ucp_requested") or variaveis
+    disponiveis_solicitados = [v for v in solicitados if v in variaveis]
+    extras_disponiveis = [v for v in variaveis if v not in solicitados]
+    indisponiveis = [v for v in solicitados if v not in variaveis]
+
+    st.success(
+        f"{len(variaveis)} camada(s) urbana(s) disponíveis. "
+        f"{len(disponiveis_solicitados)} de {len(solicitados)} parâmetro(s) selecionado(s) foram carregados."
+    )
+    if extras_disponiveis:
+        st.caption(
+            "Também ficaram disponíveis por serem baixados no mesmo pacote de fonte: "
+            f"{', '.join(extras_disponiveis)}."
+        )
+    if indisponiveis:
+        st.warning(
+            "Alguns parâmetros selecionados não retornaram no processamento: "
+            f"{', '.join(indisponiveis)}. Tente escolher menos grupos de fonte ou repetir o download."
+        )
+
+    falhas = resultado.get("failed_variables") or []
+    if falhas:
+        st.caption(
+            f"⚠️ {len(falhas)} parâmetro(s) não puderam ser baixados para esta área "
+            f"({', '.join(nome for nome, _ in falhas)}) — provavelmente instabilidade na fonte de dados. "
+            "Os demais abaixo carregaram normalmente."
+        )
+
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        variavel = st.selectbox(
+            "Parâmetro urbano a visualizar", variaveis,
+            format_func=lambda v: f"{v} — {UCP_DESCRICOES[v].split(' — ')[0]}" if v in UCP_DESCRICOES else v,
+        )
+    with col2:
+        st.write("")
+        if st.button("🔄 Escolher outros", use_container_width=True):
+            st.session_state.lcz_ucp_result = None
+            st.rerun()
+    st.caption(UCP_DESCRICOES.get(variavel, "Descrição não disponível para este parâmetro."))
+    categoria = UCP_CATEGORIA.get(variavel)
+    fonte = UCP_FONTE_CATEGORIA.get(categoria, "LCZ4py")
+    st.caption(f"Fonte da camada: {fonte}. Recorte espacial: área do mapa LCZ gerado para {st.session_state.lcz_city_name}.")
+
+    with st.spinner("Gerando mapa..."):
+        from utils.lcz4r import lcz_plot_parametro_urbano
+        fig = lcz_plot_parametro_urbano(resultado, variavel)
+    st.plotly_chart(fig, use_container_width=True)
+
+    if variavel in UCP_INTERPRETACAO:
+        st.info(f"Leitura didática: {UCP_INTERPRETACAO[variavel]}")
+
+    st.caption(
+        "Compare este mapa com a aba **Mapa**: os parâmetros mais associados a calor "
+        "(altura/volume construído, superfície construída) tendem a coincidir com as classes LCZ "
+        "compactas (1-3), enquanto cobertura arbórea e fração urbana baixa coincidem com as classes "
+        "de vegetação (A-D)."
+    )
+
+
+def renderizar_aba_indices_espectrais():
+    """Índices espectrais por satélite, escolhidos pelo usuário e comparados entre classes LCZ."""
+    from utils.lcz4r import (
+        INDICES_ESPECTRAIS_DESCRICOES,
+        INDICES_ESPECTRAIS_FONTE,
+        INDICES_ESPECTRAIS_PADRAO,
+        INDICES_ESPECTRAIS_TEMA,
+    )
+
+    st.markdown(
+        "**Índices espectrais** combinam bandas de satélite (Sentinel-2) em um único número por pixel "
+        "para destacar vegetação, água ou área construída. Comparados por classe LCZ, mostram *por que* "
+        "algumas áreas aquecem mais: menos vegetação (NDVI baixo) e mais construção (NDBI alto) tendem a "
+        "andar juntos com temperaturas mais altas."
+    )
+
+    if st.session_state.lcz_indices_stats is None:
+        st.markdown("##### Escolha os índices que quer calcular")
+        opcoes = list(INDICES_ESPECTRAIS_DESCRICOES.keys())
+        selecionados = st.multiselect(
+            "Índices espectrais", opcoes, default=INDICES_ESPECTRAIS_PADRAO,
+            format_func=lambda i: f"{i} — {INDICES_ESPECTRAIS_DESCRICOES[i].split(' — ')[0]}",
+            label_visibility="collapsed",
+        )
+        for indice in selecionados:
+            st.caption(f"**{indice}** — {INDICES_ESPECTRAIS_DESCRICOES[indice]}")
+
+        st.caption(
+            "Baixa imagens recentes do Sentinel-2 (últimos 90 dias, poucas nuvens) recortadas na área do "
+            "mapa e calcula os índices escolhidos. Pode levar 1-2 minutos."
+        )
+        if st.button("🌿 Carregar índices espectrais", disabled=not selecionados):
+            with st.spinner("Baixando imagens de satélite e calculando índices..."):
+                try:
+                    from utils.lcz4r import (
+                        lcz_baixar_sentinel2, lcz_calcular_indices, lcz_estatisticas_indices,
+                    )
+                    st.session_state.lcz_indices_requested = selecionados
+                    pc_result = lcz_baixar_sentinel2(st.session_state.lcz_raster_path)
+                    indices_result = lcz_calcular_indices(pc_result, indices=selecionados)
+                    st.session_state.lcz_pc_result = pc_result
+                    st.session_state.lcz_indices_result = indices_result
+                    st.session_state.lcz_indices_stats = lcz_estatisticas_indices(
+                        st.session_state.lcz_raster_path, indices_result
+                    )
+                except Exception as e:
+                    st.error(
+                        f"Não foi possível calcular os índices espectrais: {e}. "
+                        "Isso costuma acontecer quando não há imagens do Sentinel-2 com poucas nuvens "
+                        "recentes para esta área — tente novamente mais tarde."
+                    )
+        return
+
+    stats = st.session_state.lcz_indices_stats
+    if st.button("🔄 Escolher outros índices"):
+        st.session_state.lcz_indices_stats = None
+        st.session_state.lcz_indices_result = None
+        st.session_state.lcz_pc_result = None
+        st.session_state.lcz_indices_requested = []
+        st.rerun()
+
+    tabela = stats.df
+    if hasattr(tabela, "to_pandas"):
+        tabela = tabela.to_pandas()
+
+    solicitados = st.session_state.get("lcz_indices_requested") or INDICES_ESPECTRAIS_PADRAO
+    colunas_indice = [c for c in tabela.columns if str(c).lower() in {"indice", "index", "indices", "variable", "variavel"}]
+    if colunas_indice:
+        indices_disponiveis = sorted(set(tabela[colunas_indice[0]].dropna().astype(str)))
+    else:
+        indices_disponiveis = [i for i in solicitados if i in str(stats.fig)]
+    indisponiveis = [i for i in solicitados if i not in indices_disponiveis]
+
+    temas = sorted({INDICES_ESPECTRAIS_TEMA.get(i, "Outro") for i in indices_disponiveis})
+    st.success(
+        f"{len(indices_disponiveis)} índice(s) espectral(is) calculado(s): "
+        f"{', '.join(indices_disponiveis) if indices_disponiveis else 'nenhum'}."
+    )
+    if temas:
+        st.caption(f"Temas cobertos: {', '.join(temas)}.")
+    if indisponiveis:
+        st.warning(
+            "Alguns índices selecionados não apareceram no resultado final: "
+            f"{', '.join(indisponiveis)}. Isso pode indicar falta de banda, nuvem, ou ausência de pixels válidos."
+        )
+    st.caption(f"Fonte dos dados: {INDICES_ESPECTRAIS_FONTE}")
+
+    st.plotly_chart(stats.fig, use_container_width=True)
+
+    st.markdown(
+        "Cada caixa mostra a distribuição do índice dentro de uma classe LCZ: a linha central é a mediana, "
+        "a caixa cobre a metade central dos valores (quartis), os pontos representam pixels amostrados e "
+        "as cores seguem a paleta LCZ. Use NDVI/SAVI para vegetação, NDBI/UI para construção, MNDWI para água "
+        "e BSI para solo exposto."
+    )
+
+    with st.expander("📋 Tabela e mais opções"):
+        st.dataframe(tabela, use_container_width=True, hide_index=True)
+        st.download_button(
+            "📊 Baixar estatísticas (CSV)", tabela.to_csv(index=False),
+            f"lcz_indices_{st.session_state.lcz_city_name}.csv", "text/csv",
+        )

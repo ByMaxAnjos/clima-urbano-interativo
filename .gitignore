@@ -94,3 +94,8 @@ LCZ4r_output/
 # Frames intermediários de scripts/generate_platform_gifs.py (só os .gif finais
 # em assets/gifs/ importam)
 assets/gifs/_frames/
+
+# Cache local (baixado/gerado ao rodar o app; não precisa estar versionado)
+cache/
+lcz4r_cache/
+.lcz4r_cache/

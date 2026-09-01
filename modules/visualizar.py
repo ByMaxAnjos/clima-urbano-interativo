@@ -7,8 +7,80 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 from utils import processamento
+from utils.lcz4r import CORES_LCZ
 from utils.navegacao import ir_para
 from utils.ui import renderizar_cabecalho_modulo
+
+LCZ_ORDER = [f"LCZ {i}" for i in range(1, 11)] + [f"LCZ {letter}" for letter in "ABCDEFG"]
+LCZ_URBANAS = {f"LCZ {i}" for i in range(1, 11)}
+
+
+def _ordem_lcz_presentes(series):
+    """Mantem a sequencia oficial LCZ e deixa classes inesperadas no final."""
+    presentes = [classe for classe in LCZ_ORDER if classe in set(series.dropna())]
+    extras = sorted(set(series.dropna()) - set(LCZ_ORDER))
+    return presentes + extras
+
+
+def _tipo_lcz(classe):
+    return "Construida" if classe in LCZ_URBANAS else "Natural / cobertura"
+
+
+def _layout_didatico(fig, titulo=None, altura=420, legenda=True):
+    fig.update_layout(
+        title=dict(text=titulo, x=0.02, xanchor="left") if titulo else None,
+        height=altura,
+        margin=dict(l=18, r=18, t=58 if titulo else 24, b=34),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(248,250,252,0.72)",
+        font=dict(family="Arial, sans-serif", size=13, color="#163044"),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+            title=None,
+            font=dict(size=11),
+        ),
+        showlegend=legenda,
+        hoverlabel=dict(bgcolor="white", font_size=12),
+    )
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor="rgba(148,163,184,0.22)",
+        zeroline=False,
+        title_font=dict(size=12),
+        tickfont=dict(size=11),
+    )
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor="rgba(148,163,184,0.18)",
+        zeroline=False,
+        title_font=dict(size=12),
+        tickfont=dict(size=11),
+    )
+    return fig
+
+
+def _adicionar_linha_media(fig, media, orientacao="h", rotulo="Média geral"):
+    if orientacao == "h":
+        fig.add_hline(
+            y=media,
+            line_dash="dot",
+            line_color="#163044",
+            annotation_text=f"{rotulo}: {media:.2f}",
+            annotation_position="top left",
+        )
+    else:
+        fig.add_vline(
+            x=media,
+            line_dash="dot",
+            line_color="#163044",
+            annotation_text=f"{rotulo}: {media:.2f}",
+            annotation_position="top right",
+        )
+
 
 def renderizar_pagina():
     """Renderiza a página do módulo Visualizar."""
@@ -83,36 +155,64 @@ def renderizar_analise_espacial(dados_usuario, area_de_interesse_geojson, gdf_zc
             stats = processamento.calcular_estatisticas_area(zcl_na_area)
             
             if stats:
-                col1, col2 = st.columns([2, 1])
-                
-                with col1:
-                    # Gráfico de pizza da composição de ZCL
-                    df_composicao = pd.DataFrame(stats['composicao'])
-                    
-                    fig_pizza = px.pie(
-                        df_composicao, 
-                        values='sum', 
-                        names='zcl_classe',
-                        title="Distribuição de Zonas Climáticas Locais",
-                        color_discrete_sequence=px.colors.qualitative.Set3
-                    )
-                    fig_pizza.update_traces(textposition='inside', textinfo='percent+label')
-                    fig_pizza.update_layout(height=400)
-                    st.plotly_chart(fig_pizza, use_container_width=True)
-                
-                with col2:
-                    st.markdown("#### 📏 Métricas da Área")
-                    st.metric("Área Total", f"{stats['total_area_m2']/1000000:.2f} km²")
-                    st.metric("Classes de ZCL", stats['num_classes'])
-                    st.caption("A composição mostra como a área se divide entre diferentes formas urbanas e coberturas.")
-                    
-                    # Tabela detalhada
-                    st.markdown("#### 📊 Detalhamento")
-                    df_display = df_composicao.copy()
-                    df_display['area_km2'] = df_display['sum'] / 1000000
-                    df_display = df_display[['zcl_classe', 'area_km2', 'percentual']].round(3)
-                    df_display.columns = ['Zona Climática', 'Área (km²)', 'Percentual (%)']
-                    st.dataframe(df_display, use_container_width=True)
+                df_composicao = pd.DataFrame(stats['composicao'])
+                ordem = _ordem_lcz_presentes(df_composicao['zcl_classe'])
+                df_composicao['zcl_classe'] = pd.Categorical(
+                    df_composicao['zcl_classe'], categories=ordem, ordered=True
+                )
+                df_composicao = df_composicao.sort_values('zcl_classe')
+                df_composicao['area_km2'] = df_composicao['sum'] / 1_000_000
+                df_composicao['tipo'] = df_composicao['zcl_classe'].astype(str).map(_tipo_lcz)
+                classe_dominante = df_composicao.loc[df_composicao['percentual'].idxmax()]
+                pct_construida = df_composicao.loc[
+                    df_composicao['tipo'] == "Construida", 'percentual'
+                ].sum()
+
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Área total", f"{stats['total_area_m2']/1_000_000:.2f} km²")
+                col2.metric("Classe dominante", str(classe_dominante['zcl_classe']),
+                            f"{classe_dominante['percentual']:.1f}%")
+                col3.metric("Área construída", f"{pct_construida:.1f}%",
+                            help="Soma das classes LCZ 1 a LCZ 10 dentro da área.")
+
+                fig_area = px.bar(
+                    df_composicao,
+                    x='percentual',
+                    y='zcl_classe',
+                    orientation='h',
+                    color='zcl_classe',
+                    color_discrete_map=CORES_LCZ,
+                    category_orders={'zcl_classe': ordem},
+                    text=df_composicao['percentual'].map(lambda v: f"{v:.1f}%"),
+                    custom_data=['tipo', 'area_km2'],
+                    labels={
+                        'zcl_classe': 'Classe LCZ',
+                        'percentual': 'Participação na área (%)',
+                        'area_km2': 'Área (km²)',
+                        'tipo': 'Grupo',
+                    },
+                )
+                fig_area.update_traces(
+                    textposition='outside',
+                    marker_line_color='rgba(22,48,68,0.24)',
+                    marker_line_width=0.8,
+                    hovertemplate="<b>%{y}</b><br>%{customdata[0]}<br>Área: %{customdata[1]:.3f} km²<br>Participação: %{x:.1f}%<extra></extra>",
+                )
+                fig_area.update_layout(yaxis={'categoryorder': 'array', 'categoryarray': ordem[::-1]})
+                _layout_didatico(fig_area, "Composição da área por classe LCZ", 440, legenda=False)
+                fig_area.update_xaxes(range=[0, max(5, df_composicao['percentual'].max() * 1.18)])
+                st.plotly_chart(fig_area, use_container_width=True)
+
+                st.caption(
+                    "Leitura: barras maiores indicam quais formas urbanas ou coberturas dominam a área. "
+                    "As cores seguem a paleta oficial LCZ, facilitando comparar esta seção com os mapas."
+                )
+
+                df_display = df_composicao.copy()
+                df_display['zcl_classe'] = df_display['zcl_classe'].astype(str)
+                df_display = df_display[['zcl_classe', 'tipo', 'area_km2', 'percentual']].round(3)
+                df_display.columns = ['Zona climática', 'Grupo', 'Área (km²)', 'Percentual (%)']
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
         else:
             st.warning("Nenhuma Zona Climática encontrada na área desenhada.")
     else:
@@ -131,37 +231,76 @@ def renderizar_analise_espacial(dados_usuario, area_de_interesse_geojson, gdf_zc
         if not pontos_na_area.empty:
             # Juntar pontos com informações de ZCL
             pontos_com_info = processamento.juntar_dados_espaciais(pontos_na_area, gdf_zcl_base)
-            
-            col1, col2 = st.columns(2)
-            
+            pontos_com_info = pontos_com_info.dropna(subset=['zcl_classe']).copy()
+
+            if pontos_com_info.empty:
+                st.warning("Os pontos foram carregados, mas nenhum caiu dentro das classes LCZ mapeadas.")
+                return
+
+            ordem_pontos = _ordem_lcz_presentes(pontos_com_info['zcl_classe'])
+            pontos_com_info['zcl_classe'] = pd.Categorical(
+                pontos_com_info['zcl_classe'], categories=ordem_pontos, ordered=True
+            )
+            pontos_com_info['classe_texto'] = pontos_com_info['zcl_classe'].astype(str)
+            pontos_com_info['grupo_lcz'] = pontos_com_info['classe_texto'].map(_tipo_lcz)
+            valor_min = pontos_com_info['valor'].min()
+            valor_max = pontos_com_info['valor'].max()
+            if valor_max == valor_min:
+                pontos_com_info['tamanho_ponto'] = 10
+            else:
+                pontos_com_info['tamanho_ponto'] = 7 + (
+                    (pontos_com_info['valor'] - valor_min) / (valor_max - valor_min) * 15
+                )
+
+            col1, col2 = st.columns([1.2, 1])
+
             with col1:
-                # Mapa de dispersão dos valores
                 fig_scatter = px.scatter_mapbox(
                     pontos_com_info,
                     lat='latitude',
                     lon='longitude',
-                    color='valor',
-                    size='valor',
-                    hover_data=['zcl_classe'],
-                    color_continuous_scale='RdYlBu_r',
-                    title="Distribuição Espacial dos Valores Medidos",
+                    color='classe_texto',
+                    size='tamanho_ponto',
+                    color_discrete_map=CORES_LCZ,
+                    category_orders={'classe_texto': ordem_pontos},
+                    custom_data=['classe_texto', 'grupo_lcz', 'valor'],
+                    title="Pontos medidos sobre as classes LCZ",
                     mapbox_style="open-street-map",
-                    height=400
+                    height=460,
+                    zoom=10,
                 )
-                fig_scatter.update_layout(mapbox_zoom=11)
+                fig_scatter.update_traces(
+                    marker=dict(opacity=0.88, sizemode='diameter', line=dict(width=1.2, color="#163044")),
+                    hovertemplate="<b>%{customdata[0]}</b><br>%{customdata[1]}<br>Valor medido: %{customdata[2]:.2f}<extra></extra>",
+                )
+                fig_scatter.update_layout(
+                    margin=dict(l=0, r=0, t=56, b=0),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, title=None),
+                )
                 st.plotly_chart(fig_scatter, use_container_width=True)
-            
+
             with col2:
-                # Histograma dos valores
                 fig_hist = px.histogram(
                     pontos_com_info,
                     x='valor',
-                    nbins=20,
-                    title="Distribuição dos Valores Medidos",
-                    labels={'valor': 'Valor Medido', 'count': 'Frequência'}
+                    color='classe_texto',
+                    nbins=min(12, max(5, len(pontos_com_info) // 2)),
+                    barmode='overlay',
+                    opacity=0.72,
+                    color_discrete_map=CORES_LCZ,
+                    category_orders={'classe_texto': ordem_pontos},
+                    labels={'valor': 'Valor medido', 'count': 'Número de pontos', 'classe_texto': 'Classe LCZ'},
+                    title="Distribuição dos valores por LCZ",
                 )
-                fig_hist.update_layout(height=400)
+                _adicionar_linha_media(fig_hist, pontos_com_info['valor'].mean(), orientacao="v")
+                _layout_didatico(fig_hist, "Distribuição dos valores por LCZ", 460, legenda=True)
                 st.plotly_chart(fig_hist, use_container_width=True)
+
+            st.caption(
+                "No mapa, a cor indica a classe LCZ e o tamanho indica a intensidade do valor medido. "
+                "No histograma, barras deslocadas para a direita indicam classes com medições mais altas."
+            )
         else:
             st.warning("Nenhum ponto de medição encontrado na área de interesse.")
 
@@ -208,45 +347,100 @@ def renderizar_analise_estatistica(dados_usuario, area_de_interesse_geojson, gdf
     
     # Análise por ZCL
     st.markdown("#### 🏘️ Análise por Zona Climática Local")
-    
+    ordem_zcl = _ordem_lcz_presentes(pontos_com_zcl['zcl_classe'])
+    pontos_com_zcl = pontos_com_zcl.copy()
+    pontos_com_zcl['classe_texto'] = pontos_com_zcl['zcl_classe'].astype(str)
+    pontos_com_zcl['grupo_lcz'] = pontos_com_zcl['classe_texto'].map(_tipo_lcz)
+
+    stats_por_zcl = (
+        pontos_com_zcl.groupby('classe_texto', observed=True)['valor']
+        .agg(['mean', 'std', 'count', 'min', 'max'])
+        .reset_index()
+    )
+    stats_por_zcl['grupo_lcz'] = stats_por_zcl['classe_texto'].map(_tipo_lcz)
+    stats_por_zcl['erro'] = stats_por_zcl['std'].fillna(0)
+    stats_por_zcl['rotulo'] = stats_por_zcl.apply(
+        lambda row: f"{row['mean']:.1f}  n={int(row['count'])}", axis=1
+    )
+    media_geral = pontos_com_zcl['valor'].mean()
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
-        # Box plot por ZCL
         fig_box = px.box(
             pontos_com_zcl,
-            x='zcl_classe',
+            x='classe_texto',
             y='valor',
-            title="Distribuição dos Valores por Zona Climática",
-            labels={'zcl_classe': 'Zona Climática Local', 'valor': 'Valor Medido'}
+            points='all',
+            color='classe_texto',
+            color_discrete_map=CORES_LCZ,
+            category_orders={'classe_texto': ordem_zcl},
+            labels={'classe_texto': 'Classe LCZ', 'valor': 'Valor medido'},
+            title="Variação dos valores dentro de cada LCZ",
+            hover_data={'grupo_lcz': True, 'latitude': ':.5f', 'longitude': ':.5f'},
         )
-        fig_box.update_xaxes(tickangle=45)
-        fig_box.update_layout(height=400)
+        fig_box.update_traces(
+            marker=dict(opacity=0.72, size=7, line=dict(width=0.6, color="#163044")),
+            line=dict(width=1.4),
+        )
+        _adicionar_linha_media(fig_box, media_geral, orientacao="h")
+        _layout_didatico(fig_box, "Variação dos valores dentro de cada LCZ", 460, legenda=False)
+        fig_box.update_xaxes(tickangle=0)
         st.plotly_chart(fig_box, use_container_width=True)
-    
+
     with col2:
-        # Gráfico de barras com médias
-        stats_por_zcl = pontos_com_zcl.groupby('zcl_classe')['valor'].agg(['mean', 'std', 'count']).reset_index()
-        
+        stats_ranking = stats_por_zcl.sort_values('mean', ascending=True)
         fig_bar = px.bar(
-            stats_por_zcl,
-            x='zcl_classe',
-            y='mean',
-            error_y='std',
-            title="Valor Médio por Zona Climática",
-            labels={'zcl_classe': 'Zona Climática Local', 'mean': 'Valor Médio'}
+            stats_ranking,
+            x='mean',
+            y='classe_texto',
+            orientation='h',
+            error_x='erro',
+            color='classe_texto',
+            color_discrete_map=CORES_LCZ,
+            category_orders={'classe_texto': ordem_zcl},
+            text='rotulo',
+            custom_data=['grupo_lcz', 'count', 'std', 'min', 'max'],
+            labels={'classe_texto': 'Classe LCZ', 'mean': 'Valor médio'},
+            title="Ranking das médias por LCZ",
         )
-        fig_bar.update_xaxes(tickangle=45)
-        fig_bar.update_layout(height=400)
+        fig_bar.update_traces(
+            textposition='outside',
+            marker_line_color='rgba(22,48,68,0.24)',
+            marker_line_width=0.8,
+            hovertemplate=(
+                "<b>%{y}</b><br>%{customdata[0]}<br>"
+                "Média: %{x:.2f}<br>"
+                "Desvio padrão: %{customdata[2]:.2f}<br>"
+                "Pontos: %{customdata[1]}<br>"
+                "Mín-Máx: %{customdata[3]:.2f} a %{customdata[4]:.2f}<extra></extra>"
+            ),
+        )
+        _adicionar_linha_media(fig_bar, media_geral, orientacao="v")
+        _layout_didatico(fig_bar, "Ranking das médias por LCZ", 460, legenda=False)
+        desvio_geral = pontos_com_zcl['valor'].std()
+        if pd.isna(desvio_geral) or desvio_geral == 0:
+            desvio_geral = max(1, abs(media_geral) * 0.05)
+        fig_bar.update_xaxes(range=[
+            min(stats_ranking['mean'].min(), media_geral) - max(1, desvio_geral * 0.35),
+            stats_ranking['mean'].max() + max(1, desvio_geral * 1.25),
+        ])
         st.plotly_chart(fig_bar, use_container_width=True)
+
+    st.caption(
+        "No boxplot, a linha central mostra a mediana e os pontos mostram as medições reais. "
+        "No ranking, barras à direita da média geral indicam classes com valores médios mais altos."
+    )
     
     # Tabela de estatísticas detalhadas
     st.markdown("#### 📊 Estatísticas Detalhadas por ZCL")
     
-    stats_detalhadas = pontos_com_zcl.groupby('zcl_classe')['valor'].agg([
+    stats_detalhadas = pontos_com_zcl.groupby('classe_texto')['valor'].agg([
         'count', 'mean', 'std', 'min', 'max'
     ]).round(2)
-    stats_detalhadas.columns = ['N° Pontos', 'Média', 'Desvio Padrão', 'Mínimo', 'Máximo']
+    stats_detalhadas = stats_detalhadas.reindex(ordem_zcl).dropna(how='all')
+    stats_detalhadas.columns = ['Pontos', 'Média', 'Desvio padrão', 'Mínimo', 'Máximo']
+    stats_detalhadas.insert(0, 'Grupo', [_tipo_lcz(idx) for idx in stats_detalhadas.index])
     st.dataframe(stats_detalhadas, use_container_width=True)
     
     # Análise de correlação (se houver dados suficientes)
@@ -269,22 +463,66 @@ def renderizar_analise_estatistica(dados_usuario, area_de_interesse_geojson, gdf
         with col2:
             st.metric("Correlação com Longitude", f"{corr_lon:.3f}")
         
-        # Scatter plot das correlações
         fig_corr = make_subplots(
             rows=1, cols=2,
-            subplot_titles=('Valor vs Latitude', 'Valor vs Longitude')
+            subplot_titles=('Gradiente norte-sul', 'Gradiente oeste-leste')
         )
-        
-        fig_corr.add_trace(
-            go.Scatter(x=pontos_com_zcl['latitude'], y=pontos_com_zcl['valor'], mode='markers', name='Latitude'),
-            row=1, col=1
-        )
-        fig_corr.add_trace(
-            go.Scatter(x=pontos_com_zcl['longitude'], y=pontos_com_zcl['valor'], mode='markers', name='Longitude'),
-            row=1, col=2
-        )
-        
-        fig_corr.update_layout(height=400, title_text="Correlações Espaciais")
+
+        for classe in ordem_zcl:
+            subset = pontos_com_zcl[pontos_com_zcl['classe_texto'] == classe]
+            if subset.empty:
+                continue
+            cor = CORES_LCZ.get(classe, "#0f766e")
+            fig_corr.add_trace(
+                go.Scatter(
+                    x=subset['latitude'],
+                    y=subset['valor'],
+                    mode='markers',
+                    name=classe,
+                    marker=dict(size=9, color=cor, line=dict(width=0.8, color="#163044"), opacity=0.82),
+                    hovertemplate=f"<b>{classe}</b><br>Latitude: %{{x:.5f}}<br>Valor: %{{y:.2f}}<extra></extra>",
+                    legendgroup=classe,
+                    showlegend=True,
+                ),
+                row=1, col=1
+            )
+            fig_corr.add_trace(
+                go.Scatter(
+                    x=subset['longitude'],
+                    y=subset['valor'],
+                    mode='markers',
+                    name=classe,
+                    marker=dict(size=9, color=cor, line=dict(width=0.8, color="#163044"), opacity=0.82),
+                    hovertemplate=f"<b>{classe}</b><br>Longitude: %{{x:.5f}}<br>Valor: %{{y:.2f}}<extra></extra>",
+                    legendgroup=classe,
+                    showlegend=False,
+                ),
+                row=1, col=2
+            )
+
+        for col, eixo in enumerate(['latitude', 'longitude'], start=1):
+            if pontos_com_zcl[eixo].nunique() > 1:
+                coef = np.polyfit(pontos_com_zcl[eixo], pontos_com_zcl['valor'], 1)
+                x_line = np.array([pontos_com_zcl[eixo].min(), pontos_com_zcl[eixo].max()])
+                y_line = coef[0] * x_line + coef[1]
+                fig_corr.add_trace(
+                    go.Scatter(
+                        x=x_line,
+                        y=y_line,
+                        mode='lines',
+                        name='Tendência',
+                        line=dict(color="#163044", dash="dot", width=2),
+                        hoverinfo='skip',
+                        showlegend=(col == 1),
+                    ),
+                    row=1, col=col,
+                )
+
+        _layout_didatico(fig_corr, "Tendência espacial dos valores medidos", 430, legenda=True)
+        fig_corr.update_xaxes(title_text="Latitude", row=1, col=1)
+        fig_corr.update_xaxes(title_text="Longitude", row=1, col=2)
+        fig_corr.update_yaxes(title_text="Valor medido", row=1, col=1)
+        fig_corr.update_yaxes(title_text="", row=1, col=2)
         st.plotly_chart(fig_corr, use_container_width=True)
 
 def renderizar_relatorio(dados_usuario, area_de_interesse_geojson, gdf_zcl_base):

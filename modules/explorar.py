@@ -341,17 +341,23 @@ def renderizar_aba_parametros_urbanos():
         )
 
     falhas = resultado.get("failed_variables") or []
+    falhas_nomes = {nome for nome, _ in falhas}
     if falhas:
         st.caption(
             f"⚠️ {len(falhas)} parâmetro(s) não puderam ser baixados para esta área "
-            f"({', '.join(nome for nome, _ in falhas)}) — provavelmente instabilidade na fonte de dados. "
+            f"({', '.join(falhas_nomes)}) — provavelmente instabilidade na fonte de dados. "
             "Os demais abaixo carregaram normalmente."
         )
+
+    # Só oferece no seletor variáveis que realmente vieram com dados — uma
+    # que falhou (em failed_variables) mas ainda apareceu em variable_list
+    # travaria o gráfico abaixo com um erro não tratado.
+    variaveis_plotaveis = [v for v in variaveis if v not in falhas_nomes] or variaveis
 
     col1, col2 = st.columns([4, 1])
     with col1:
         variavel = st.selectbox(
-            "Parâmetro urbano a visualizar", variaveis,
+            "Parâmetro urbano a visualizar", variaveis_plotaveis,
             format_func=lambda v: f"{v} — {UCP_DESCRICOES[v].split(' — ')[0]}" if v in UCP_DESCRICOES else v,
         )
     with col2:
@@ -364,10 +370,17 @@ def renderizar_aba_parametros_urbanos():
     fonte = UCP_FONTE_CATEGORIA.get(categoria, "LCZ4py")
     st.caption(f"Fonte da camada: {fonte}. Recorte espacial: área do mapa LCZ gerado para {st.session_state.lcz_city_name}.")
 
-    with st.spinner("Gerando mapa..."):
-        from utils.lcz4r import lcz_plot_parametro_urbano
-        fig = lcz_plot_parametro_urbano(resultado, variavel)
-    st.plotly_chart(fig, use_container_width=True)
+    try:
+        with st.spinner("Gerando mapa..."):
+            from utils.lcz4r import lcz_plot_parametro_urbano
+            fig = lcz_plot_parametro_urbano(resultado, variavel)
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(
+            f"Não foi possível gerar o mapa de **{variavel}**: {e}. Tente escolher outro parâmetro "
+            "ou clique em \"Escolher outros\" para baixar novamente."
+        )
+        return
 
     if variavel in UCP_INTERPRETACAO:
         st.info(f"Leitura didática: {UCP_INTERPRETACAO[variavel]}")

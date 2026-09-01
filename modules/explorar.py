@@ -341,10 +341,11 @@ def renderizar_aba_parametros_urbanos():
         )
 
     falhas = resultado.get("failed_variables") or []
-    falhas_nomes = {nome for nome, _ in falhas}
-    if falhas:
+    falhas_usuario = [(nome, erro) for nome, erro in falhas if nome != "chamada_completa"]
+    falhas_nomes = {nome for nome, _ in falhas_usuario}
+    if falhas_usuario:
         st.caption(
-            f"⚠️ {len(falhas)} parâmetro(s) não puderam ser baixados para esta área "
+            f"⚠️ {len(falhas_usuario)} parâmetro(s) não puderam ser baixados para esta área "
             f"({', '.join(falhas_nomes)}) — provavelmente instabilidade na fonte de dados. "
             "Os demais abaixo carregaram normalmente."
         )

@@ -17,7 +17,7 @@ import pandas as pd
 import geopandas as gpd
 import rasterio
 from rasterio import features
-from shapely.geometry import shape
+from shapely.geometry import Point, shape
 import requests
 import shutil
 from urllib3.exceptions import NewConnectionError
@@ -923,6 +923,89 @@ def _ajustar_layout_plotly(fig, title=None, height=560, legend=True):
     return fig
 
 
+def _normalizar_variaveis_ucp(variables):
+    """Separa nomes exibidos na plataforma dos nomes aceitos internamente pela LCZ4py."""
+    if not variables:
+        return None, {"ghsl", "wumpod", "vegetacao"}, None
+
+    solicitadas = list(dict.fromkeys(variables))
+    categorias = {UCP_CATEGORIA.get(v) for v in solicitadas}
+    categorias.discard(None)
+
+    # `variables` na LCZ4py filtra apenas WUMPOD/vegetação. GHSL usa chaves
+    # próprias em GHSL_MAPPINGS e sempre é processado como bloco quando ativo.
+    variaveis_filtravel = [
+        v for v in solicitadas
+        if UCP_CATEGORIA.get(v) in {"wumpod", "vegetacao"}
+    ]
+    if not variaveis_filtravel:
+        variaveis_filtravel = None
+
+    ghsl_tiles = None
+    if "ghsl" in categorias:
+        ghsl_tiles = None
+
+    return variaveis_filtravel, categorias, ghsl_tiles
+
+
+def _fundir_resultados_ucp(resultados):
+    """Combina chamadas parciais de lcz_get_ucp quando uma fonte falha isoladamente."""
+    import xarray as xr
+
+    rasters = {}
+    falhas = []
+    pilhas = []
+
+    for resultado in resultados:
+        if not resultado:
+            continue
+        ds = resultado.get("combined_rasters")
+        if ds is not None:
+            for nome, data_array in ds.data_vars.items():
+                rasters[nome] = data_array
+        falhas.extend(resultado.get("failed_variables") or [])
+        if resultado.get("stack_path"):
+            pilhas.append(resultado["stack_path"])
+
+    if not rasters:
+        raise RuntimeError(
+            "No variables were successfully processed. "
+            f"Failed: {[f[0] for f in falhas]}"
+        )
+
+    combined_rasters = xr.Dataset(rasters)
+    return {
+        "df_vars": None,
+        "combined_rasters": combined_rasters,
+        "stack_path": pilhas[-1] if pilhas else None,
+        "variable_list": list(combined_rasters.data_vars),
+        "failed_variables": falhas,
+        "summary": None,
+    }
+
+
+def _corrigir_lista_variaveis_ucp(resultado):
+    """Usa os nomes reais do xarray.Dataset, não os nomes internos GHSL da LCZ4py."""
+    ds = resultado.get("combined_rasters") if resultado else None
+    if ds is not None:
+        ordem = list(UCP_DESCRICOES)
+        resultado["variable_list"] = (
+            [v for v in ordem if v in ds.data_vars] +
+            [v for v in ds.data_vars if v not in ordem]
+        )
+    return resultado
+
+
+def _estacao_sentinela_ucp(raster_path):
+    """Cria um ponto interno para contornar a extração obrigatória da LCZ4py em GHSL."""
+    with rasterio.open(raster_path) as src:
+        bounds = src.bounds
+        x = (bounds.left + bounds.right) / 2
+        y = (bounds.bottom + bounds.top) / 2
+        crs = src.crs
+    return gpd.GeoDataFrame({"id": ["area"]}, geometry=[Point(x, y)], crs=crs)
+
+
 def lcz_get_parametros_urbanos(raster_path, variables=None, cache_dir=CACHE_DIR_LCZ4PY):
     """
     Baixa e processa Parâmetros Urbanos de Superfície (UCP) — altura e volume
@@ -970,24 +1053,59 @@ def lcz_get_parametros_urbanos(raster_path, variables=None, cache_dir=CACHE_DIR_
     """
     from LCZ4py.general import lcz_get_ucp as _lcz4py_get_ucp
 
-    if variables:
-        categorias = {UCP_CATEGORIA.get(v) for v in variables}
-    else:
-        categorias = {"ghsl", "wumpod", "vegetacao"}
+    variaveis_filtravel, categorias, _ = _normalizar_variaveis_ucp(variables)
+    estacao_sentinela = _estacao_sentinela_ucp(raster_path)
 
-    resultado = _lcz4py_get_ucp(
-        lcz_map=raster_path,
-        stations=None,
-        variables=variables,
-        cache_dir=cache_dir,
-        process_ghsl="ghsl" in categorias,
-        process_wumpod="wumpod" in categorias,
-        process_vegetation="vegetacao" in categorias,
-        process_directional=False,
-        verbose=False,
-    )
-    _podar_cache_lcz4py(cache_dir)
-    return resultado
+    def executar(variaveis, cats):
+        return _lcz4py_get_ucp(
+            lcz_map=raster_path,
+            # A LCZ4py atual ainda acessa `stations.columns` no ramo GHSL mesmo
+            # quando `stations=None`; este ponto interno evita a falha e não
+            # altera os rasters que a plataforma usa para os mapas.
+            stations=estacao_sentinela,
+            variables=variaveis,
+            cache_dir=cache_dir,
+            process_ghsl="ghsl" in cats,
+            process_wumpod="wumpod" in cats,
+            process_vegetation="vegetacao" in cats,
+            process_directional=False,
+            verbose=False,
+            fail_fast=False,
+        )
+
+    try:
+        resultado = _corrigir_lista_variaveis_ucp(executar(variaveis_filtravel, categorias))
+        _podar_cache_lcz4py(cache_dir)
+        return resultado
+    except Exception as erro_principal:
+        resultados_parciais = []
+        falhas = [("chamada_completa", str(erro_principal))]
+
+        if "ghsl" in categorias:
+            try:
+                resultados_parciais.append(executar(None, {"ghsl"}))
+            except Exception as e:
+                falhas.append(("ghsl", str(e)))
+
+        for variavel in variaveis_filtravel or []:
+            categoria = UCP_CATEGORIA.get(variavel)
+            if categoria not in {"wumpod", "vegetacao"}:
+                continue
+            try:
+                resultados_parciais.append(executar([variavel], {categoria}))
+            except Exception as e:
+                falhas.append((variavel, str(e)))
+
+        try:
+            resultado = _corrigir_lista_variaveis_ucp(_fundir_resultados_ucp(resultados_parciais))
+        except Exception as e:
+            raise RuntimeError(
+                "No variables were successfully processed. "
+                f"Failed: {[f[0] for f in falhas]}"
+            ) from e
+        resultado["failed_variables"] = (resultado.get("failed_variables") or []) + falhas
+        _podar_cache_lcz4py(cache_dir)
+        return resultado
 
 
 def lcz_plot_parametro_urbano(ucp_result, parametro):

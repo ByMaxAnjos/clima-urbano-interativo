@@ -20,6 +20,8 @@ from shapely.geometry import shape
 import requests
 import shutil
 from urllib3.exceptions import NewConnectionError
+from tenacity import RetryError
+import httpx
 
 # Configurações
 warnings.filterwarnings("ignore")
@@ -249,6 +251,21 @@ def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False, return
                 f"'{city}, Brazil' ou '{city} city'. Detalhe: {msg}"
             )
         raise DataProcessingError(f"Erro no processamento dos dados LCZ: {msg}")
+    except RetryError as e:
+        # A geocodificação (Nominatim/OpenStreetMap, dentro do LCZ4py) já
+        # tentou 3x com backoff e desistiu — normalmente porque o serviço
+        # público está limitando pedidos (rate limit) na infraestrutura
+        # compartilhada do Streamlit Cloud, não porque a cidade esteja errada.
+        causa = e.last_attempt.exception() if e.last_attempt else None
+        detalhe = (
+            f" (HTTP {causa.response.status_code})"
+            if isinstance(causa, httpx.HTTPStatusError) else ""
+        )
+        raise ConnectionError(
+            f"O serviço de busca de cidades (OpenStreetMap/Nominatim) está temporariamente "
+            f"sobrecarregado ou limitando pedidos{detalhe}. Isso não tem relação com o nome "
+            "da cidade — espere um pouco e tente novamente."
+        )
     except Exception as e:
         raise DataProcessingError(f"Erro no processamento dos dados LCZ: {e}")
 

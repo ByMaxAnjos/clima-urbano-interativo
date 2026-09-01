@@ -8,6 +8,7 @@ https://colab.research.google.com/drive/1ZdReMbnI_7VSSS0ALpnb-O1Mie2BnPKw
 """
 
 import os
+import time
 import warnings
 import tempfile
 from pathlib import Path
@@ -228,46 +229,61 @@ def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False, return
 
     from LCZ4py.general import lcz_get_map as _lcz4py_get_map
 
-    try:
-        clipped_path = _lcz4py_get_map(city=city, roi=roi, isave_map=False, cache=True, verbose=False)
-    except (requests.exceptions.ConnectionError,
-            requests.exceptions.Timeout,
-            NewConnectionError,
-            OSError) as e:
-        raise ConnectionError(
-            "Falha na conexão com o serviço de dados LCZ. "
-            "Possíveis causas:\n"
-            "• Conexão com a internet instável\n"
-            "• Serviço temporariamente indisponível\n"
-            "• Firewall bloqueando o acesso\n"
-            f"Detalhe: {e}"
-        )
-    except ValueError as e:
-        msg = str(e)
-        if city is not None and ("city" in msg.lower() or "geocod" in msg.lower()):
-            raise GeocodeError(
-                f"Não foi possível encontrar a cidade '{city}'. "
-                f"Verifique se o nome está correto e tente variações como "
-                f"'{city}, Brazil' ou '{city} city'. Detalhe: {msg}"
+    # A geocodificação (Nominatim/OpenStreetMap, dentro do LCZ4py) já tenta 3x
+    # sozinha antes de desistir com RetryError — normalmente porque o serviço
+    # público está com rate limit na infraestrutura compartilhada do Streamlit
+    # Cloud, não porque a cidade esteja errada. Isso costuma passar em
+    # segundos, então esperamos e tentamos de novo aqui em vez de já devolver
+    # erro ao usuário na primeira rodada de tentativas.
+    esperas_extra = [8, 15]
+    ultimo_retry_error = None
+    clipped_path = None
+
+    for tentativa, espera in enumerate([0] + esperas_extra):
+        if espera:
+            time.sleep(espera)
+        try:
+            clipped_path = _lcz4py_get_map(city=city, roi=roi, isave_map=False, cache=True, verbose=False)
+            ultimo_retry_error = None
+            break
+        except (requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                NewConnectionError,
+                OSError) as e:
+            raise ConnectionError(
+                "Falha na conexão com o serviço de dados LCZ. "
+                "Possíveis causas:\n"
+                "• Conexão com a internet instável\n"
+                "• Serviço temporariamente indisponível\n"
+                "• Firewall bloqueando o acesso\n"
+                f"Detalhe: {e}"
             )
-        raise DataProcessingError(f"Erro no processamento dos dados LCZ: {msg}")
-    except RetryError as e:
-        # A geocodificação (Nominatim/OpenStreetMap, dentro do LCZ4py) já
-        # tentou 3x com backoff e desistiu — normalmente porque o serviço
-        # público está limitando pedidos (rate limit) na infraestrutura
-        # compartilhada do Streamlit Cloud, não porque a cidade esteja errada.
-        causa = e.last_attempt.exception() if e.last_attempt else None
+        except ValueError as e:
+            msg = str(e)
+            if city is not None and ("city" in msg.lower() or "geocod" in msg.lower()):
+                raise GeocodeError(
+                    f"Não foi possível encontrar a cidade '{city}'. "
+                    f"Verifique se o nome está correto e tente variações como "
+                    f"'{city}, Brazil' ou '{city} city'. Detalhe: {msg}"
+                )
+            raise DataProcessingError(f"Erro no processamento dos dados LCZ: {msg}")
+        except RetryError as e:
+            ultimo_retry_error = e
+            continue
+        except Exception as e:
+            raise DataProcessingError(f"Erro no processamento dos dados LCZ: {e}")
+
+    if ultimo_retry_error is not None:
+        causa = ultimo_retry_error.last_attempt.exception() if ultimo_retry_error.last_attempt else None
         detalhe = (
             f" (HTTP {causa.response.status_code})"
             if isinstance(causa, httpx.HTTPStatusError) else ""
         )
         raise ConnectionError(
             f"O serviço de busca de cidades (OpenStreetMap/Nominatim) está temporariamente "
-            f"sobrecarregado ou limitando pedidos{detalhe}. Isso não tem relação com o nome "
-            "da cidade — espere um pouco e tente novamente."
+            f"sobrecarregado ou limitando pedidos{detalhe}, mesmo após tentar de novo. Isso não "
+            "tem relação com o nome da cidade — espere um pouco mais e tente novamente."
         )
-    except Exception as e:
-        raise DataProcessingError(f"Erro no processamento dos dados LCZ: {e}")
 
     with rasterio.open(clipped_path) as src:
         data = src.read(1)

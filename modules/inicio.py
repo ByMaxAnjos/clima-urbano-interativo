@@ -1,6 +1,8 @@
 # modules/inicio.py
 
+import base64
 import random
+from pathlib import Path
 
 import streamlit as st
 from utils.glossario import renderizar_entenda_dados
@@ -13,6 +15,131 @@ _LCZ_BUILT_OPEN = ["#C54F1E", "#FF6628", "#FF985E"]              # open high/mid
 _LCZ_BUILT_LOW = ["#BBBBBB", "#FFCBAB", "#565656", "#FDED3F"]    # large lowrise, sparsely built, heavy industry, lightweight lowrise
 _LCZ_NATURAL = ["#006A18", "#00A926", "#628432", "#B5DA7F"]      # dense/scattered trees, bush/scrub, low plants
 _LCZ_RARE = ["#FCF7B1", "#656BFA"]                                # bare soil/sand, water
+
+
+def _asset_data_uri(path):
+    """Codifica imagens locais para uso confiável em HTML dentro do Streamlit."""
+    asset = Path(path)
+    if not asset.exists():
+        return ""
+    mime = "image/svg+xml" if asset.suffix.lower() == ".svg" else f"image/{asset.suffix.lower().lstrip('.')}"
+    if mime == "image/jpg":
+        mime = "image/jpeg"
+    data = base64.b64encode(asset.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{data}"
+
+
+def _team_card(person, destaque=False):
+    links = "".join(
+        f'<a href="{url}" target="_blank" rel="noopener">{label}</a>'
+        for label, url in person.get("links", [])
+    )
+    photo = _asset_data_uri(person["foto"])
+    logo = _asset_data_uri(person["logo"])
+    card_class = "team-card team-card--featured" if destaque else "team-card"
+    description = f'<p class="team-bio">{person["bio"]}</p>' if person.get("bio") else ""
+    return (
+        f'<article class="{card_class}">'
+        '<div class="team-photo-wrap">'
+        f'<img class="team-photo" src="{photo}" alt="Foto de {person["nome"]}">'
+        '</div>'
+        '<div class="team-card-body">'
+        '<div class="team-card-head">'
+        '<div>'
+        f'<p class="team-role">{person["papel"]}</p>'
+        f'<h4>{person["nome"]}</h4>'
+        '</div>'
+        f'<img class="institution-logo" src="{logo}" alt="Logo {person["instituicao"]}">'
+        '</div>'
+        f'<p class="team-affiliation">{person["instituicao_nome"]}</p>'
+        f'{description}'
+        f'<div class="team-links">{links}</div>'
+        '</div>'
+        '</article>'
+    )
+
+
+def _renderizar_equipe():
+    ufjf_logo = "assets/institutions/ufjf-logo.jpg"
+    uerj_logo = "assets/institutions/uerj-logo.png"
+    desenvolvedores = [
+        {
+            "nome": "Max Anjos",
+            "papel": "Desenvolvedor · Coordenação científica",
+            "instituicao": "UFJF",
+            "instituicao_nome": "Universidade Federal de Juiz de Fora",
+            "foto": "assets/team/max.jpg",
+            "logo": ufjf_logo,
+            "bio": "Professor do Departamento de Geociências da UFJF. Atua em clima urbano, machine learning, modelagem ambiental e análise geoespacial.",
+            "links": [
+                ("GitHub", "https://github.com/ByMaxAnjos"),
+                ("LinkedIn", "https://www.linkedin.com/in/maxanjos/"),
+                ("Email", "mailto:maxanjos@campus.ul.pt"),
+            ],
+        },
+        {
+            "nome": "Mariana Andreotti Dias",
+            "papel": "Desenvolvedora · Pesquisa e ensino",
+            "instituicao": "UERJ",
+            "instituicao_nome": "Universidade do Estado do Rio de Janeiro",
+            "foto": "assets/team/mariana.jpg",
+            "logo": uerj_logo,
+            "bio": "Pesquisadora na UERJ. Atua em Geografia da Saúde, Ensino de Geografia e Climatologia Geográfica.",
+            "links": [
+                ("ResearchGate", "https://www.researchgate.net/profile/Mariana-Dias"),
+                ("Email", "mailto:marianaandreotti@gmail.com"),
+            ],
+        },
+    ]
+    contribuidores = [
+        {
+            "nome": "Hyago Pinto Rodrigues Melo",
+            "papel": "Contribuidor",
+            "instituicao": "UFJF",
+            "instituicao_nome": "Universidade Federal de Juiz de Fora",
+            "foto": "assets/team/hyago.jpg",
+            "logo": ufjf_logo,
+            "links": [("Email", "mailto:hyago.melo@estudante.ufjf.br")],
+        },
+        {
+            "nome": "Aline Gabriel de Brito Rodrigues",
+            "papel": "Contribuidora",
+            "instituicao": "UFJF",
+            "instituicao_nome": "Universidade Federal de Juiz de Fora",
+            "foto": "assets/team/aline.jpg",
+            "logo": ufjf_logo,
+            "links": [("Email", "mailto:gbrito.aline@gmail.com")],
+        },
+        {
+            "nome": "Henrique Carcelen da Silva",
+            "papel": "Contribuidor",
+            "instituicao": "UFJF",
+            "instituicao_nome": "Universidade Federal de Juiz de Fora",
+            "foto": "assets/team/henrique.jpg",
+            "logo": ufjf_logo,
+            "links": [("Email", "mailto:202627007@estudante.ufjf.br")],
+        },
+        {
+            "nome": "Maria Cristina Alves Pereira",
+            "papel": "Contribuidora",
+            "instituicao": "UFJF",
+            "instituicao_nome": "Universidade Federal de Juiz de Fora",
+            "foto": "assets/team/mariacristina.jpg",
+            "logo": ufjf_logo,
+            "links": [("Email", "mailto:mcristinaalvespereira@msn.com")],
+        },
+    ]
+    dev_cards = "".join(_team_card(p, destaque=True) for p in desenvolvedores)
+    contributor_cards = "".join(_team_card(p) for p in contribuidores)
+    st.markdown(
+        '<section class="team-section">'
+        '<div class="team-section-header"><p class="team-eyebrow">Equipe</p><h3>Desenvolvedores</h3></div>'
+        f'<div class="team-grid team-grid--featured">{dev_cards}</div>'
+        '<div class="team-section-header team-section-header--compact"><p class="team-eyebrow">Rede de apoio</p><h3>Contribuidores</h3></div>'
+        f'<div class="team-grid team-grid--contributors">{contributor_cards}</div>'
+        '</section>',
+        unsafe_allow_html=True,
+    )
 
 
 def _gerar_mosaico_lcz(cols=15, rows=10, seed=7):
@@ -162,68 +289,7 @@ def renderizar_pagina():
         if st.button("🚀 Começar Exploração", type="primary", use_container_width=True):
             ir_para("Explorar")
         
-    # Author info section
-    st.markdown("### 👥 Desenvolvedores")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        # Author card 1
-        with st.expander("**Max Anjos**", expanded=True):
-            col_img, col_info = st.columns([1, 2])
-            
-            with col_img:
-                try:
-                    st.image("assets/max_photo.jpg", use_container_width=True)
-                except:
-                    st.info("👤")
-            
-            with col_info:
-                st.write("Professor do Departamento de Geociências da Universidade Federal de Juiz de Fora (UFJF). Áreas de atuação: clima urbano, machine learning, modelagem ambiental e análise geoespacial.")
-                st.markdown("""
-                - [GitHub](https://github.com/ByMaxAnjos)
-                - [LinkedIn](https://www.linkedin.com/in/maxanjos/)
-                - [Email](mailto:maxanjos@campus.ul.pt)
-                """)
-
-    with col2:
-        # Author card 2
-        with st.expander("**Mariana Andreotti Dias**", expanded=True):
-            col_img, col_info = st.columns([1, 2])
-            
-            with col_img:
-                try:
-                    st.image("assets/mari_photo.jpg", use_container_width=True)
-                except:
-                    st.info("👤")
-            
-            with col_info:
-                st.write("Pesquisadora na UERJ. Áreas de atuação: Geografia da Saúde, Ensino de Geografia e Climatologia Geográfica.")
-                st.markdown("""
-                - [ResearchGate](https://www.researchgate.net/profile/Mariana-Dias)
-                - [Email](mailto:marianaandreotti@gmail.com)
-                """)
-        
-    # Contributors section
-    st.markdown("### 🤝 Contribuidores")
-
-    contribuidores = [
-        ("Hyago Pinto Rodrigues Melo", "UFJF", "hyago.melo@estudante.ufjf.br", "assets/hyago_photo.jpg"),
-        ("Aline Gabriel de Brito Rodrigues", "UFJF", "gbrito.aline@gmail.com", "assets/aline_photo.jpg"),
-        ("Henrique Carcelen da Silva", "UFJF", "202627007@estudante.ufjf.br", "assets/henrique_photo.jpg"),
-        ("Maria Cristina Alves Pereira", "UFJF", "mcristinaalvespereira@msn.com", "assets/mariacristina_photo.jpg"),
-    ]
-
-    cols = st.columns(4)
-    for col, (nome, afiliacao, email, foto) in zip(cols, contribuidores):
-        with col:
-            try:
-                st.image(foto, use_container_width=True)
-            except Exception:
-                st.info("👤")
-            st.markdown(f"**{nome}**")
-            st.caption(afiliacao)
-            st.markdown(f"[Email](mailto:{email})")
+    _renderizar_equipe()
 
     # Footer informativo
     st.markdown("""

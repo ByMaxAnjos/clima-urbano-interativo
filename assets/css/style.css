@@ -506,6 +506,232 @@ body {
   line-height: 1.6;
 }
 
+/* Equipe */
+.team-section {
+  margin: 3rem 0 2.25rem;
+}
+
+.team-section-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.team-section-header--compact {
+  margin-top: 2rem;
+}
+
+.team-section-header h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+  font-size: 1.7rem;
+  line-height: 1.2;
+}
+
+.team-eyebrow {
+  margin: 0;
+  color: var(--primary-color);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.team-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.team-grid--featured {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.team-grid--contributors {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.team-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+}
+
+.team-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.team-card--featured {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  min-height: 230px;
+}
+
+.team-photo-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 1rem 1rem 0;
+  background:
+    linear-gradient(135deg, rgba(14, 165, 233, 0.08), rgba(22, 163, 74, 0.08));
+}
+
+.team-card--featured .team-photo-wrap {
+  padding: 1.1rem;
+}
+
+.team-photo {
+  width: 132px;
+  height: 132px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 4px solid var(--surface-color);
+  box-shadow: var(--shadow-md);
+}
+
+.team-card--featured .team-photo {
+  width: 138px;
+  height: 138px;
+}
+
+.team-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 1rem;
+}
+
+.team-card--featured .team-card-body {
+  padding: 1.15rem 1.15rem 1.1rem 0;
+}
+
+.team-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.team-role {
+  margin: 0 0 0.2rem;
+  color: var(--primary-color);
+  font: 700 0.72rem var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.team-card h4 {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+  font-size: 1.2rem;
+  line-height: 1.25;
+}
+
+.team-card--featured h4 {
+  font-size: 1.35rem;
+}
+
+.institution-logo {
+  width: 74px;
+  height: 46px;
+  object-fit: contain;
+  padding: 0.35rem;
+  border: 1px solid rgba(15, 118, 110, 0.12);
+  border-radius: 7px;
+  background: #fff;
+  flex: 0 0 auto;
+}
+
+.team-affiliation {
+  margin: 0;
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.team-bio {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.team-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: auto;
+}
+
+.team-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  color: var(--primary-dark);
+  background: rgba(15, 118, 110, 0.05);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.team-links a:hover {
+  border-color: var(--border-hover);
+  background: rgba(14, 165, 233, 0.1);
+}
+
+@media (max-width: 980px) {
+  .team-grid--featured,
+  .team-grid--contributors {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .team-card--featured {
+    grid-template-columns: 150px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .team-section-header {
+    display: block;
+  }
+
+  .team-grid--featured,
+  .team-grid--contributors {
+    grid-template-columns: 1fr;
+  }
+
+  .team-card--featured {
+    display: flex;
+  }
+
+  .team-card--featured .team-card-body {
+    padding: 1rem;
+  }
+
+  .team-photo-wrap {
+    padding: 1rem 1rem 0;
+  }
+}
+
 /* Botões */
 .stButton > button {
   background: var(--background-gradient);

@@ -858,6 +858,96 @@ UCP_INTERPRETACAO = {
     "hgt": "Valores altos indicam vegetação mais alta ou dossel mais desenvolvido.",
 }
 
+# Estimativas didáticas por classe LCZ. Elas mantêm a aba "Parâmetros Urbanos"
+# funcionando sem downloads externos no Streamlit Cloud. Os valores são
+# aproximações para leitura comparativa em sala, não produtos GHSL/WUMPOD.
+UCP_ESTIMADO_LCZ_DESCRICAO = (
+    "Estimativa didática derivada da classe LCZ, sem download externo. "
+    "Use para ensino e triagem visual; para análise quantitativa, carregue as camadas globais."
+)
+UCP_ESTIMADO_LCZ_FONTE = "Estimativa por classe LCZ (sem download externo)"
+UCP_ESTIMADO_LCZ_VALORES = {
+    "built_hei": {
+        1: 40, 2: 18, 3: 7, 4: 35, 5: 14, 6: 6, 7: 4, 8: 8, 9: 5, 10: 12,
+        11: 0.1, 12: 0.1, 13: 0.1, 14: 0.1, 15: 0.1, 16: 0.1, 17: 0.1,
+    },
+    "built_sur": {
+        1: 0.78, 2: 0.68, 3: 0.62, 4: 0.45, 5: 0.38, 6: 0.28, 7: 0.42, 8: 0.58, 9: 0.18, 10: 0.52,
+        11: 0.02, 12: 0.05, 13: 0.03, 14: 0.02, 15: 0.06, 16: 0.02, 17: 0.01,
+    },
+    "built_vol": {
+        1: 31, 2: 12, 3: 4, 4: 16, 5: 5, 6: 2, 7: 2, 8: 5, 9: 1, 10: 6,
+        11: 0.1, 12: 0.1, 13: 0.1, 14: 0.1, 15: 0.1, 16: 0.1, 17: 0.1,
+    },
+    "pop": {
+        1: 24000, 2: 18000, 3: 12000, 4: 15000, 5: 9000, 6: 4500, 7: 7000, 8: 1200, 9: 900, 10: 500,
+        11: 50, 12: 120, 13: 50, 14: 80, 15: 50, 16: 50, 17: 50,
+    },
+    "tree": {
+        1: 3, 2: 6, 3: 8, 4: 14, 5: 18, 6: 25, 7: 12, 8: 5, 9: 30, 10: 4,
+        11: 85, 12: 55, 13: 20, 14: 8, 15: 1, 16: 1, 17: 1,
+    },
+    "urban": {
+        1: 96, 2: 92, 3: 88, 4: 78, 5: 70, 6: 55, 7: 76, 8: 84, 9: 35, 10: 90,
+        11: 2, 12: 5, 13: 3, 14: 2, 15: 8, 16: 2, 17: 1,
+    },
+    "hgt": {
+        1: 2, 2: 3, 3: 4, 4: 6, 5: 7, 6: 8, 7: 4, 8: 2, 9: 10, 10: 2,
+        11: 18, 12: 10, 13: 2, 14: 1, 15: 0.1, 16: 0.1, 17: 0.1,
+    },
+}
+UCP_ESTIMADO_LCZ_PADRAO = ["built_hei", "built_sur", "tree", "urban"]
+
+
+def lcz_get_parametros_lcz_estimados(raster_data, raster_profile, variables=None):
+    """Gera parâmetros urbanos didáticos por classe LCZ sem baixar camadas externas."""
+    import xarray as xr
+    import rioxarray  # noqa: F401 - registra o accessor .rio usado pela LCZ4py
+
+    variaveis = variables or UCP_ESTIMADO_LCZ_PADRAO
+    variaveis = [v for v in variaveis if v in UCP_ESTIMADO_LCZ_VALORES]
+    if not variaveis:
+        variaveis = UCP_ESTIMADO_LCZ_PADRAO
+
+    data = np.asarray(raster_data)
+    transform = raster_profile.get("transform")
+    crs = raster_profile.get("crs")
+    nodata = raster_profile.get("nodata", 255)
+    height, width = data.shape
+
+    if transform is not None:
+        xs = transform.c + (np.arange(width) + 0.5) * transform.a
+        ys = transform.f + (np.arange(height) + 0.5) * transform.e
+    else:
+        xs = np.arange(width)
+        ys = np.arange(height)
+
+    ds_vars = {}
+    mascara_valida = (data != nodata) & np.isfinite(data)
+    for variavel in variaveis:
+        valores = UCP_ESTIMADO_LCZ_VALORES[variavel]
+        arr = np.full(data.shape, np.nan, dtype=float)
+        for classe_lcz, valor in valores.items():
+            arr[(data == classe_lcz) & mascara_valida] = valor
+        ds_vars[variavel] = xr.DataArray(arr, dims=("y", "x"), coords={"y": ys, "x": xs})
+
+    ds = xr.Dataset(ds_vars)
+    if crs is not None:
+        ds = ds.rio.write_crs(crs)
+    if transform is not None:
+        ds = ds.rio.write_transform(transform)
+    ds = ds.rio.set_spatial_dims(x_dim="x", y_dim="y")
+
+    return {
+        "df_vars": None,
+        "combined_rasters": ds,
+        "stack_path": None,
+        "variable_list": variaveis,
+        "failed_variables": [],
+        "summary": UCP_ESTIMADO_LCZ_DESCRICAO,
+        "source": "lcz_estimated",
+    }
+
 # Catálogo didático de índices espectrais oferecido ao usuário — um
 # subconjunto (vegetação, água, urbano) do catálogo completo da LCZ4py
 # (~30 índices), para manter as opções claras para fins de ensino.
@@ -1065,10 +1155,12 @@ def lcz_get_parametros_urbanos(raster_path, variables=None, cache_dir=CACHE_DIR_
             stations=estacao_sentinela,
             variables=variaveis,
             cache_dir=cache_dir,
+            n_workers=1,
             process_ghsl="ghsl" in cats,
             process_wumpod="wumpod" in cats,
             process_vegetation="vegetacao" in cats,
             process_directional=False,
+            use_threads=False,
             verbose=False,
             fail_fast=False,
         )
@@ -1110,17 +1202,16 @@ def lcz_get_parametros_urbanos(raster_path, variables=None, cache_dir=CACHE_DIR_
 
 def lcz_plot_parametro_urbano(ucp_result, parametro):
     """
-    Gera o mapa interativo (Plotly) de um Parâmetro Urbano de Superfície já
-    processado por `lcz_get_parametros_urbanos`, com título, legenda (unidade)
-    e nota de fonte de dados preenchidos — a LCZ4py só conhece as unidades dos
-    ~34 parâmetros morfológicos clássicos (Stewart & Oke), não as dos UCP.
+    Gera o mapa interativo (Plotly) de um Parâmetro Urbano de Superfície,
+    vindo das camadas globais ou da estimativa didática por LCZ, com título,
+    legenda (unidade) e nota de fonte de dados preenchidos.
 
     Wrapper fino sobre LCZ4py.general.lcz_plot_parameters.
 
     Parameters
     ----------
     ucp_result : dict
-        Resultado de `lcz_get_parametros_urbanos`
+        Resultado de `lcz_get_parametros_urbanos` ou `lcz_get_parametros_lcz_estimados`
     parametro : str
         Nome da variável a plotar (um dos itens de `ucp_result['variable_list']`)
 
@@ -1132,14 +1223,21 @@ def lcz_plot_parametro_urbano(ucp_result, parametro):
 
     descricao = UCP_DESCRICOES.get(parametro, parametro)
     categoria = UCP_CATEGORIA.get(parametro)
-    fonte = UCP_FONTE_CATEGORIA.get(categoria, "LCZ4py")
+    fonte = (
+        UCP_ESTIMADO_LCZ_FONTE
+        if ucp_result.get("source") == "lcz_estimated"
+        else UCP_FONTE_CATEGORIA.get(categoria, "LCZ4py")
+    )
     unidade = UCP_UNIDADE.get(parametro, "")
 
     fig = _lcz4py_plot_parameters(
-        ucp_result["combined_rasters"], iselect=parametro,
+        ucp_result, iselect=parametro,
         title=f"{parametro} — {descricao.split(' — ')[0]}",
         subtitle=f"Fonte: {fonte}",
         caption="Processado com LCZ4py (github.com/ByMaxAnjos/LCZ4py)",
+        renderer="plotly",
+        use_datashader=False,
+        lang="pt",
     )
     _ajustar_layout_plotly(
         fig,

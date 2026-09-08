@@ -1,8 +1,10 @@
 # utils/processamento.py
 
+import io
+
 import pandas as pd
 import geopandas as gpd
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Point, Polygon, shape
 import streamlit as st
 import numpy as np
 
@@ -32,58 +34,134 @@ def carregar_dados_base(caminho_zcl, caminho_temp):
     except Exception as e:
         return None, None, f"Erro ao carregar dados base: {e}. Verifique se os arquivos estão na pasta 'data/'."
 
-def validar_e_processar_csv(arquivo_carregado):
+def ler_csv_tolerante(arquivo_carregado):
     """
-    Lê um arquivo CSV carregado, valida as colunas essenciais (lat, lon, valor)
-    e o converte para um GeoDataFrame de pontos.
+    Lê um CSV aceitando separador vírgula ou ponto-e-vírgula (detectado pela
+    primeira linha). Retorna (DataFrame, separador_usado).
+    """
+    bruto = arquivo_carregado.read()
+    texto = bruto.decode("utf-8", errors="replace") if isinstance(bruto, bytes) else bruto
+    arquivo_carregado.seek(0)
+
+    primeira_linha = texto.splitlines()[0] if texto else ""
+    separador = ";" if primeira_linha.count(";") > primeira_linha.count(",") else ","
+    df = pd.read_csv(io.StringIO(texto), sep=separador)
+    return df, separador
+
+
+def detectar_colunas(df):
+    """
+    Tenta identificar as colunas de latitude, longitude e valor por nome
+    (insensível a maiúsculas/minúsculas), aceitando aliases comuns como 'lng'.
+    Retorna (lat_col, lon_col, val_col); cada um pode ser None se não encontrado.
+    """
+    lat_col = lon_col = val_col = None
+    for col in df.columns:
+        col_lower = str(col).lower()
+        if lon_col is None and any(a in col_lower for a in ["lon", "lng", "lgn"]):
+            lon_col = col
+        elif lat_col is None and "lat" in col_lower:
+            lat_col = col
+        elif val_col is None and any(v in col_lower for v in ["val", "temp", "medida", "valor"]):
+            val_col = col
+    return lat_col, lon_col, val_col
+
+
+def _coagir_numerico_tolerante(serie):
+    """Converte para numérico aceitando tanto ponto quanto vírgula decimal."""
+    numerico = pd.to_numeric(serie, errors="coerce")
+    faltantes = numerico.isna() & serie.notna()
+    if faltantes.any():
+        alternativo = pd.to_numeric(
+            serie.astype(str).str.replace(",", ".", regex=False), errors="coerce"
+        )
+        numerico = numerico.where(~faltantes, alternativo)
+    return numerico
+
+
+def validar_e_processar_csv(arquivo_carregado, lat_col=None, lon_col=None, val_col=None):
+    """
+    Lê um arquivo CSV carregado, identifica (ou recebe explicitamente) as colunas
+    de latitude, longitude e valor, valida os dados e converte para um
+    GeoDataFrame de pontos.
+
+    lat_col/lon_col/val_col: nomes de coluna para sobrepor a detecção automática.
+
+    Retorna (gdf_pontos, erro, info) onde info é um dict com:
+      - 'colunas_detectadas': (lat_col, lon_col, val_col) usados
+      - 'problemas_linha': lista de (numero_linha_original, motivos) removidos
+      - 'separador': separador do CSV detectado
     """
     try:
-        df = pd.read_csv(arquivo_carregado)
-        
-        # Tenta encontrar colunas de latitude, longitude e valor (insensível a maiúsculas/minúsculas)
-        lat_col = None
-        lon_col = None
-        val_col = None
-        
-        for col in df.columns:
-            col_lower = col.lower()
-            if 'lat' in col_lower and lat_col is None:
-                lat_col = col
-            elif 'lon' in col_lower and lon_col is None:
-                lon_col = col
-            elif any(v in col_lower for v in ['val', 'temp', 'medida', 'valor']) and val_col is None:
-                val_col = col
-        
+        df, separador = ler_csv_tolerante(arquivo_carregado)
+
+        lat_auto, lon_auto, val_auto = detectar_colunas(df)
+        lat_col = lat_col or lat_auto
+        lon_col = lon_col or lon_auto
+        val_col = val_col or val_auto
+
         if not all([lat_col, lon_col, val_col]):
-            return None, "Não foi possível encontrar colunas de 'latitude', 'longitude' e 'valor' no arquivo. Verifique se as colunas têm nomes apropriados."
+            return None, (
+                "Não foi possível encontrar colunas de 'latitude', 'longitude' e 'valor' no "
+                "arquivo. Verifique os nomes das colunas ou selecione-as manualmente."
+            ), {"colunas_detectadas": (lat_col, lon_col, val_col), "problemas_linha": [], "separador": separador}
 
-        # Renomeia para nomes padrão
-        df = df.rename(columns={lat_col: 'latitude', lon_col: 'longitude', val_col: 'valor'})
+        # Renomeia para nomes padrão (mantém o índice original para reportar problemas por linha)
+        df = df.rename(columns={lat_col: "latitude", lon_col: "longitude", val_col: "valor"})
+        df["_linha_original"] = df.index + 2  # +2: cabeçalho (linha 1) + índice 0-based
 
-        # Converte para numérico, forçando erros a se tornarem NaN
-        df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
-        df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
-        df['valor'] = pd.to_numeric(df['valor'], errors='coerce')
+        df["latitude"] = _coagir_numerico_tolerante(df["latitude"])
+        df["longitude"] = _coagir_numerico_tolerante(df["longitude"])
+        df["valor"] = _coagir_numerico_tolerante(df["valor"])
 
-        # Remove linhas com valores nulos nas colunas essenciais
-        df_original_len = len(df)
-        df.dropna(subset=['latitude', 'longitude', 'valor'], inplace=True)
+        problemas_linha = []
+        for _, linha in df.iterrows():
+            motivos = []
+            if pd.isna(linha["latitude"]) or not (-90 <= linha["latitude"] <= 90):
+                motivos.append("latitude ausente ou fora do intervalo [-90, 90]")
+            if pd.isna(linha["longitude"]) or not (-180 <= linha["longitude"] <= 180):
+                motivos.append("longitude ausente ou fora do intervalo [-180, 180]")
+            if pd.isna(linha["valor"]):
+                motivos.append("valor ausente ou não numérico")
+            if motivos:
+                problemas_linha.append((int(linha["_linha_original"]), motivos))
 
-        if df.empty:
-            return None, "Nenhuma linha válida encontrada no arquivo após a limpeza. Verifique os dados."
+        linhas_invalidas = {n for n, _ in problemas_linha}
+        df_valido = df[~df["_linha_original"].isin(linhas_invalidas)].drop(columns="_linha_original")
 
-        # Cria geometrias de ponto
-        geometry = [Point(xy) for xy in zip(df['longitude'], df['latitude'])]
-        gdf_pontos = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
-        
-        linhas_removidas = df_original_len - len(df)
-        if linhas_removidas > 0:
-            st.warning(f"⚠️ {linhas_removidas} linha(s) com dados inválidos foram removidas do arquivo.")
+        info = {
+            "colunas_detectadas": (lat_col, lon_col, val_col),
+            "problemas_linha": problemas_linha,
+            "separador": separador,
+        }
 
-        return gdf_pontos, None
-        
+        if df_valido.empty:
+            return None, "Nenhuma linha válida encontrada no arquivo após a validação. Verifique os dados.", info
+
+        geometry = [Point(xy) for xy in zip(df_valido["longitude"], df_valido["latitude"])]
+        gdf_pontos = gpd.GeoDataFrame(df_valido, geometry=geometry, crs="EPSG:4326")
+
+        return gdf_pontos, None, info
+
     except Exception as e:
-        return None, f"Erro inesperado ao processar o arquivo: {e}"
+        return None, f"Erro inesperado ao processar o arquivo: {e}", {"colunas_detectadas": (lat_col, lon_col, val_col), "problemas_linha": [], "separador": None}
+
+
+def calcular_area_poligono_m2(geojson_geometry):
+    """
+    Calcula a área de uma geometria GeoJSON (em WGS84) em metros quadrados,
+    reprojetando para um CRS UTM estimado a partir da própria geometria — método
+    geograficamente correto, ao contrário de aproximações em graus (ex.: * 111km²).
+    """
+    if not geojson_geometry:
+        return 0.0
+    try:
+        geom = shape(geojson_geometry)
+        gdf = gpd.GeoDataFrame([1], geometry=[geom], crs="EPSG:4326")
+        crs_utm = gdf.estimate_utm_crs()
+        return float(gdf.to_crs(crs_utm).geometry.area.iloc[0])
+    except Exception:
+        return 0.0
 
 def filtrar_dados_por_area(gdf, area_de_interesse_geojson):
     """

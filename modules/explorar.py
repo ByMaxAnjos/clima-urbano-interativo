@@ -266,12 +266,13 @@ def renderizar_aba_area():
         st.download_button("📊 Baixar dados (CSV)", area_stats.to_csv(index=False),
                             f"lcz_area_{st.session_state.lcz_city_name}.csv", "text/csv")
 
-
-
-
 def renderizar_aba_parametros_urbanos():
     """Parâmetros Urbanos de Superfície (UCP) — morfologia da cidade que explica o efeito de cada classe LCZ."""
-    from utils.lcz4r import UCP_DESCRICOES, UCP_FONTE_CATEGORIA, UCP_CATEGORIA, UCP_INTERPRETACAO
+    from utils.lcz4r import (
+        UCP_DESCRICOES, UCP_FONTE_CATEGORIA, UCP_CATEGORIA, UCP_INTERPRETACAO,
+        UCP_ESTIMADO_LCZ_DESCRICAO, UCP_ESTIMADO_LCZ_PADRAO,
+        lcz_get_parametros_lcz_estimados,
+    )
 
     st.markdown(
         "As classes LCZ descrevem o **padrão** da paisagem urbana; os **Parâmetros Urbanos de Superfície "
@@ -279,31 +280,51 @@ def renderizar_aba_parametros_urbanos():
         "quanto solo está impermeabilizado, cobertura arbórea, densidade populacional, entre outros."
     )
 
-    if st.session_state.lcz_ucp_result is None:
-        st.markdown("##### Escolha os parâmetros que quer investigar")
+    fonte_modo = st.radio(
+        "Fonte dos parâmetros",
+        ["Estimativa rápida por LCZ", "Camadas globais externas"],
+        horizontal=True,
+        help=(
+            "A estimativa rápida usa apenas o mapa LCZ já carregado. As camadas globais externas "
+            "baixam dados GHSL/WUMPOD/vegetação e podem falhar no Streamlit Cloud."
+        ),
+    )
+
+    if fonte_modo == "Estimativa rápida por LCZ":
+        opcoes_estimadas = [v for v in UCP_ESTIMADO_LCZ_PADRAO if v in UCP_DESCRICOES]
+        variavel = st.selectbox(
+            "Parâmetro urbano a visualizar", opcoes_estimadas,
+            format_func=lambda v: f"{v} — {UCP_DESCRICOES[v].split(' — ')[0]}",
+        )
+        resultado = lcz_get_parametros_lcz_estimados(
+            st.session_state.lcz_raster_data,
+            st.session_state.lcz_raster_profile,
+            variables=opcoes_estimadas,
+        )
+        st.caption(UCP_ESTIMADO_LCZ_DESCRICAO)
+    else:
+        st.markdown("##### Escolha poucos parâmetros por tentativa")
         opcoes = list(UCP_DESCRICOES.keys())
         selecionados = st.multiselect(
             "Parâmetros urbanos", opcoes,
-            default=["built_hei", "built_sur", "tree"],
+            default=["built_hei"],
             format_func=lambda v: f"{v} — {UCP_DESCRICOES[v].split(' — ')[0]}",
             label_visibility="collapsed",
         )
-        for variavel in selecionados:
-            st.caption(f"**{variavel}** — {UCP_DESCRICOES[variavel]}")
+        for item in selecionados:
+            st.caption(f"**{item}** — {UCP_DESCRICOES[item]}")
 
         st.caption(
-            "Cada parâmetro escolhido baixa uma camada global (GHSL, WUMPOD ou cobertura do solo) recortada "
-            "na área do mapa — quanto mais grupos de fonte diferentes, mais tempo o download leva "
-            "(1-2 minutos por grupo)."
+            "Este modo baixa camadas globais recortadas na área do mapa. No Streamlit Cloud, "
+            "prefira um grupo por vez: GHSL, WUMPOD ou vegetação."
         )
-        if any(UCP_DESCRICOES and v in {"built_hei", "built_sur", "built_vol", "pop"} for v in selecionados):
+        if any(item in {"built_hei", "built_sur", "built_vol", "pop"} for item in selecionados):
             st.caption(
-                "ℹ️ Altura, superfície e volume construído e população vêm do mesmo conjunto de dados "
-                "(GHSL) e são sempre baixados juntos — ao escolher um deles, os outros três também "
-                "ficarão disponíveis para visualizar."
+                "Altura, superfície e volume construído e população vêm do mesmo conjunto GHSL; "
+                "ao escolher um deles, outros do mesmo pacote podem ficar disponíveis."
             )
-        if st.button("🏙️ Carregar parâmetros urbanos", disabled=not selecionados):
-            with st.spinner("Baixando e processando parâmetros urbanos..."):
+        if st.button("🏙️ Carregar camadas globais", disabled=not selecionados):
+            with st.spinner("Baixando e processando camadas globais..."):
                 try:
                     from utils.lcz4r import lcz_get_parametros_urbanos
                     st.session_state.lcz_ucp_requested = selecionados
@@ -311,65 +332,73 @@ def renderizar_aba_parametros_urbanos():
                         st.session_state.lcz_raster_path, variables=selecionados
                     )
                 except Exception as e:
-                    st.error(f"Não foi possível baixar os parâmetros urbanos: {e}")
-        return
+                    st.session_state.lcz_ucp_result = None
+                    st.error(
+                        "Não foi possível baixar as camadas globais agora. "
+                        f"A estimativa rápida por LCZ continua disponível. Detalhe: {e}"
+                    )
 
-    resultado = st.session_state.lcz_ucp_result
+        if st.session_state.lcz_ucp_result is None:
+            st.info("Carregue uma camada global acima ou volte para a estimativa rápida por LCZ.")
+            return
+
+        resultado = st.session_state.lcz_ucp_result
+        variaveis = resultado["variable_list"]
+        if not variaveis:
+            st.warning("Nenhum parâmetro urbano ficou disponível para esta área.")
+            return
+
+        solicitados = st.session_state.get("lcz_ucp_requested") or variaveis
+        disponiveis_solicitados = [v for v in solicitados if v in variaveis]
+        extras_disponiveis = [v for v in variaveis if v not in solicitados]
+        indisponiveis = [v for v in solicitados if v not in variaveis]
+
+        st.success(
+            f"{len(variaveis)} camada(s) urbana(s) disponíveis. "
+            f"{len(disponiveis_solicitados)} de {len(solicitados)} parâmetro(s) selecionado(s) foram carregados."
+        )
+        if extras_disponiveis:
+            st.caption(
+                "Também ficaram disponíveis por serem baixados no mesmo pacote de fonte: "
+                f"{', '.join(extras_disponiveis)}."
+            )
+        if indisponiveis:
+            st.warning(
+                "Alguns parâmetros selecionados não retornaram no processamento: "
+                f"{', '.join(indisponiveis)}. Tente escolher menos grupos de fonte ou repetir o download."
+            )
+
+        falhas = resultado.get("failed_variables") or []
+        falhas_usuario = [(nome, erro) for nome, erro in falhas if nome != "chamada_completa"]
+        falhas_nomes = {nome for nome, _ in falhas_usuario}
+        if falhas_usuario:
+            st.caption(
+                f"{len(falhas_usuario)} parâmetro(s) não puderam ser baixados para esta área "
+                f"({', '.join(falhas_nomes)}) — provavelmente instabilidade na fonte de dados. "
+                "Os demais abaixo carregaram normalmente."
+            )
+
+        variaveis_plotaveis = [v for v in variaveis if v not in falhas_nomes] or variaveis
+
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            variavel = st.selectbox(
+                "Parâmetro urbano a visualizar", variaveis_plotaveis,
+                format_func=lambda v: f"{v} — {UCP_DESCRICOES[v].split(' — ')[0]}" if v in UCP_DESCRICOES else v,
+            )
+        with col2:
+            st.write("")
+            if st.button("🔄 Escolher outros", use_container_width=True):
+                st.session_state.lcz_ucp_result = None
+                st.rerun()
+        st.caption(f"Fonte da camada: {UCP_FONTE_CATEGORIA.get(UCP_CATEGORIA.get(variavel), 'LCZ4py')}.")
+
     variaveis = resultado["variable_list"]
     if not variaveis:
         st.warning("Nenhum parâmetro urbano ficou disponível para esta área.")
         return
 
-    solicitados = st.session_state.get("lcz_ucp_requested") or variaveis
-    disponiveis_solicitados = [v for v in solicitados if v in variaveis]
-    extras_disponiveis = [v for v in variaveis if v not in solicitados]
-    indisponiveis = [v for v in solicitados if v not in variaveis]
-
-    st.success(
-        f"{len(variaveis)} camada(s) urbana(s) disponíveis. "
-        f"{len(disponiveis_solicitados)} de {len(solicitados)} parâmetro(s) selecionado(s) foram carregados."
-    )
-    if extras_disponiveis:
-        st.caption(
-            "Também ficaram disponíveis por serem baixados no mesmo pacote de fonte: "
-            f"{', '.join(extras_disponiveis)}."
-        )
-    if indisponiveis:
-        st.warning(
-            "Alguns parâmetros selecionados não retornaram no processamento: "
-            f"{', '.join(indisponiveis)}. Tente escolher menos grupos de fonte ou repetir o download."
-        )
-
-    falhas = resultado.get("failed_variables") or []
-    falhas_usuario = [(nome, erro) for nome, erro in falhas if nome != "chamada_completa"]
-    falhas_nomes = {nome for nome, _ in falhas_usuario}
-    if falhas_usuario:
-        st.caption(
-            f"⚠️ {len(falhas_usuario)} parâmetro(s) não puderam ser baixados para esta área "
-            f"({', '.join(falhas_nomes)}) — provavelmente instabilidade na fonte de dados. "
-            "Os demais abaixo carregaram normalmente."
-        )
-
-    # Só oferece no seletor variáveis que realmente vieram com dados — uma
-    # que falhou (em failed_variables) mas ainda apareceu em variable_list
-    # travaria o gráfico abaixo com um erro não tratado.
-    variaveis_plotaveis = [v for v in variaveis if v not in falhas_nomes] or variaveis
-
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        variavel = st.selectbox(
-            "Parâmetro urbano a visualizar", variaveis_plotaveis,
-            format_func=lambda v: f"{v} — {UCP_DESCRICOES[v].split(' — ')[0]}" if v in UCP_DESCRICOES else v,
-        )
-    with col2:
-        st.write("")
-        if st.button("🔄 Escolher outros", use_container_width=True):
-            st.session_state.lcz_ucp_result = None
-            st.rerun()
     st.caption(UCP_DESCRICOES.get(variavel, "Descrição não disponível para este parâmetro."))
-    categoria = UCP_CATEGORIA.get(variavel)
-    fonte = UCP_FONTE_CATEGORIA.get(categoria, "LCZ4py")
-    st.caption(f"Fonte da camada: {fonte}. Recorte espacial: área do mapa LCZ gerado para {st.session_state.lcz_city_name}.")
 
     try:
         with st.spinner("Gerando mapa..."):

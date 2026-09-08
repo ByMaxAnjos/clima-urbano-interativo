@@ -14,8 +14,7 @@ from streamlit_folium import st_folium
 import folium
 from shapely.geometry import Polygon
 import json
-from utils import simulacao
-from math import radians, cos
+from utils import simulacao, processamento
 
 # --- Configurações e Constantes ---
 
@@ -171,6 +170,12 @@ def renderizar_header():
         "Eles não são uma previsão local, não substituem medição de campo e não devem ser publicados como resultado empírico da sua área. "
         "A unidade e a faixa observada mudam conforme a intervenção."
     )
+    with st.expander("ℹ️ Temperatura do ar não é conforto térmico"):
+        st.markdown(
+            "O simulador estima variação de **temperatura do ar** (ou, em alguns estudos citados, de superfície). "
+            "Conforto térmico depende também de umidade, vento, radiação solar e sombra — duas áreas com a mesma "
+            "temperatura do ar podem ter conforto muito diferente. Não trate o resultado como medida de conforto."
+        )
     if st.button("🎓 Tutorial Interativo", use_container_width=False):
         st.session_state.tutorial_ativo = not st.session_state.tutorial_ativo
 
@@ -204,36 +209,12 @@ def renderizar_tutorial():
             st.rerun()
 
 def calcular_area_geografica(coords):
-    '''Calcula área aproximada usando fórmula de Haversine.'''
+    '''Calcula a área de um polígono (lista de coordenadas [lon, lat]) em m²,
+    reprojetando para um CRS UTM estimado — mesmo método usado em
+    utils/processamento.py, em vez de uma aproximação plana em graus.'''
     if len(coords) < 3:
         return 0
-    
-    # Simplificação: usar aproximação retangular para áreas pequenas
-    lats = [coord[1] for coord in coords]
-    lons = [coord[0] for coord in coords]
-    
-    # Converter para metros aproximadamente
-    lat_center = sum(lats) / len(lats)
-    
-    # 1 grau de latitude ≈ 111 km
-    # 1 grau de longitude ≈ 111 km * cos(latitude)
-    lat_to_m = 111000
-    lon_to_m = 111000 * cos(radians(lat_center))
-    
-    # Calcular área usando fórmula do shoelace
-    area = 0
-    n = len(coords)
-    for i in range(n):
-        j = (i + 1) % n
-        area += coords[i][0] * coords[j][1]
-        area -= coords[j][0] * coords[i][1]
-    
-    area = abs(area) / 2
-    
-    # Converter para metros quadrados
-    area_m2 = area * lat_to_m * lon_to_m
-    
-    return area_m2
+    return processamento.calcular_area_poligono_m2({"type": "Polygon", "coordinates": [coords]})
 
 def renderizar_card_intervencao_melhorado(intervencao, index):
     '''Renderiza um card expandido para uma intervenção.'''
@@ -732,12 +713,23 @@ def renderizar_visualizacoes_avancadas_melhorado():
         fig_scatter.update_layout(height=500)
         st.plotly_chart(fig_scatter, use_container_width=True)
         
-        # Análise de eficiência
+        # Análise de eficiência — "eficiente" só faz sentido para resfriamento;
+        # uma intervenção de aquecimento (ex.: Expansão Urbana) nunca deve vencer
+        # esse ranking, mesmo que tenha a maior magnitude de impacto.
         if len(df_resumo) > 0:
             st.markdown("**📈 Eficiência por Área:**")
             df_resumo['eficiencia'] = df_resumo['impacto_ponderado'] / (df_resumo['area_m2'] / 10000)  # Impacto por hectare
-            mais_eficiente = df_resumo.loc[df_resumo['eficiencia'].abs().idxmax()]
-            st.write(f"- **Intervenção mais eficiente**: {mais_eficiente['tipo']} ({mais_eficiente['eficiencia']:+.3f}°C/hectare)")
+            df_resfriamento = df_resumo[df_resumo['eficiencia'] < 0]
+            if not df_resfriamento.empty:
+                mais_eficiente = df_resfriamento.loc[df_resfriamento['eficiencia'].idxmin()]
+                st.write(f"- **Intervenção mais eficiente (resfriamento)**: {mais_eficiente['tipo']} ({mais_eficiente['eficiencia']:+.3f}°C/hectare)")
+            else:
+                st.write("- Nenhuma intervenção deste cenário tem efeito de resfriamento por área — não há 'mais eficiente' a destacar.")
+
+            df_aquecimento = df_resumo[df_resumo['eficiencia'] > 0]
+            if not df_aquecimento.empty:
+                mais_aquecedora = df_aquecimento.loc[df_aquecimento['eficiencia'].idxmax()]
+                st.caption(f"⚠️ Maior impacto de aquecimento por área: {mais_aquecedora['tipo']} ({mais_aquecedora['eficiencia']:+.3f}°C/hectare) — isto não é 'eficiência', é o efeito oposto.")
     
     with tab4:
         # Tabela detalhada interativa

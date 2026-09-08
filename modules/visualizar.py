@@ -13,6 +13,8 @@ from utils.ui import renderizar_cabecalho_modulo
 
 LCZ_ORDER = [f"LCZ {i}" for i in range(1, 11)] + [f"LCZ {letter}" for letter in "ABCDEFG"]
 LCZ_URBANAS = {f"LCZ {i}" for i in range(1, 11)}
+SEM_COBERTURA_ZCL = "Sem cobertura ZCL"
+CORES_LCZ_EXT = {**CORES_LCZ, SEM_COBERTURA_ZCL: "#94a3b8"}
 
 
 def _ordem_lcz_presentes(series):
@@ -23,6 +25,8 @@ def _ordem_lcz_presentes(series):
 
 
 def _tipo_lcz(classe):
+    if classe == SEM_COBERTURA_ZCL:
+        return SEM_COBERTURA_ZCL
     return "Construida" if classe in LCZ_URBANAS else "Natural / cobertura"
 
 
@@ -114,6 +118,12 @@ def renderizar_pagina():
     if gdf_zcl_base is None:
         st.error("❌ Dados base de ZCL não foram carregados. Verifique a configuração da aplicação.")
         return
+
+    with st.expander("🔎 Origem dos dados-base (ZCL) desta cidade"):
+        st.caption(
+            "Os polígonos de Zona Climática Local usados aqui são curados/demonstrativos, não a saída "
+            "de um classificador validado para esta cidade. Veja `data/README.md` para detalhes por arquivo."
+        )
 
     st.markdown("""
     <div class="learning-guide">
@@ -230,12 +240,20 @@ def renderizar_analise_espacial(dados_usuario, area_de_interesse_geojson, gdf_zc
         
         if not pontos_na_area.empty:
             # Juntar pontos com informações de ZCL
-            pontos_com_info = processamento.juntar_dados_espaciais(pontos_na_area, gdf_zcl_base)
-            pontos_com_info = pontos_com_info.dropna(subset=['zcl_classe']).copy()
+            pontos_com_info = processamento.juntar_dados_espaciais(pontos_na_area, gdf_zcl_base).copy()
 
             if pontos_com_info.empty:
                 st.warning("Os pontos foram carregados, mas nenhum caiu dentro das classes LCZ mapeadas.")
                 return
+
+            n_sem_cobertura = pontos_com_info['zcl_classe'].isna().sum()
+            if n_sem_cobertura > 0:
+                st.info(
+                    f"ℹ️ {n_sem_cobertura} ponto(s) estão fora de qualquer polígono ZCL mapeado. "
+                    "A análise prossegue sem essa classificação para eles (rotulados como "
+                    f"'{SEM_COBERTURA_ZCL}'), em vez de serem descartados."
+                )
+            pontos_com_info['zcl_classe'] = pontos_com_info['zcl_classe'].fillna(SEM_COBERTURA_ZCL)
 
             ordem_pontos = _ordem_lcz_presentes(pontos_com_info['zcl_classe'])
             pontos_com_info['zcl_classe'] = pd.Categorical(
@@ -261,7 +279,7 @@ def renderizar_analise_espacial(dados_usuario, area_de_interesse_geojson, gdf_zc
                     lon='longitude',
                     color='classe_texto',
                     size='tamanho_ponto',
-                    color_discrete_map=CORES_LCZ,
+                    color_discrete_map=CORES_LCZ_EXT,
                     category_orders={'classe_texto': ordem_pontos},
                     custom_data=['classe_texto', 'grupo_lcz', 'valor'],
                     title="Pontos medidos sobre as classes LCZ",
@@ -288,7 +306,7 @@ def renderizar_analise_espacial(dados_usuario, area_de_interesse_geojson, gdf_zc
                     nbins=min(12, max(5, len(pontos_com_info) // 2)),
                     barmode='overlay',
                     opacity=0.72,
-                    color_discrete_map=CORES_LCZ,
+                    color_discrete_map=CORES_LCZ_EXT,
                     category_orders={'classe_texto': ordem_pontos},
                     labels={'valor': 'Valor medido', 'count': 'Número de pontos', 'classe_texto': 'Classe LCZ'},
                     title="Distribuição dos valores por LCZ",
@@ -325,21 +343,32 @@ def renderizar_analise_estatistica(dados_usuario, area_de_interesse_geojson, gdf
     
     # Juntar com informações de ZCL
     pontos_com_info = processamento.juntar_dados_espaciais(pontos_na_area, gdf_zcl_base)
-    pontos_com_zcl = pontos_com_info.dropna(subset=['zcl_classe'])
-    
+    pontos_com_zcl = pontos_com_info.copy()
+
     if pontos_com_zcl.empty:
         st.warning("Nenhum ponto está localizado dentro de uma Zona Climática mapeada.")
         return
-    
+
+    n_sem_cobertura = pontos_com_zcl['zcl_classe'].isna().sum()
+    if n_sem_cobertura > 0:
+        st.info(
+            f"ℹ️ {n_sem_cobertura} ponto(s) estão fora de qualquer polígono ZCL mapeado. "
+            f"A análise prossegue sem essa classificação para eles (rotulados como '{SEM_COBERTURA_ZCL}')."
+        )
+    pontos_com_zcl['zcl_classe'] = pontos_com_zcl['zcl_classe'].fillna(SEM_COBERTURA_ZCL)
+
     # Estatísticas gerais
     col1, col2, col3, col4 = st.columns(4)
-    
+
     with col1:
         st.metric("Total de Pontos", len(pontos_com_zcl))
     with col2:
         st.metric("Valor Médio", f"{pontos_com_zcl['valor'].mean():.2f}")
     with col3:
-        st.metric("Desvio Padrão", f"{pontos_com_zcl['valor'].std():.2f}")
+        if len(pontos_com_zcl) == 1:
+            st.metric("Desvio Padrão", "não estimável (n=1)")
+        else:
+            st.metric("Desvio Padrão", f"{pontos_com_zcl['valor'].std():.2f}")
     with col4:
         st.metric("Amplitude", f"{pontos_com_zcl['valor'].max() - pontos_com_zcl['valor'].min():.2f}")
 
@@ -373,7 +402,7 @@ def renderizar_analise_estatistica(dados_usuario, area_de_interesse_geojson, gdf
             y='valor',
             points='all',
             color='classe_texto',
-            color_discrete_map=CORES_LCZ,
+            color_discrete_map=CORES_LCZ_EXT,
             category_orders={'classe_texto': ordem_zcl},
             labels={'classe_texto': 'Classe LCZ', 'valor': 'Valor medido'},
             title="Variação dos valores dentro de cada LCZ",
@@ -397,7 +426,7 @@ def renderizar_analise_estatistica(dados_usuario, area_de_interesse_geojson, gdf
             orientation='h',
             error_x='erro',
             color='classe_texto',
-            color_discrete_map=CORES_LCZ,
+            color_discrete_map=CORES_LCZ_EXT,
             category_orders={'classe_texto': ordem_zcl},
             text='rotulo',
             custom_data=['grupo_lcz', 'count', 'std', 'min', 'max'],
@@ -440,8 +469,16 @@ def renderizar_analise_estatistica(dados_usuario, area_de_interesse_geojson, gdf
     ]).round(2)
     stats_detalhadas = stats_detalhadas.reindex(ordem_zcl).dropna(how='all')
     stats_detalhadas.columns = ['Pontos', 'Média', 'Desvio padrão', 'Mínimo', 'Máximo']
+    stats_detalhadas['Desvio padrão'] = stats_detalhadas.apply(
+        lambda r: "não estimável (n=1)" if r['Pontos'] == 1 else r['Desvio padrão'], axis=1
+    )
     stats_detalhadas.insert(0, 'Grupo', [_tipo_lcz(idx) for idx in stats_detalhadas.index])
     st.dataframe(stats_detalhadas, use_container_width=True)
+    if (stats_detalhadas['Pontos'] == 1).any():
+        st.caption(
+            "Grupos com apenas 1 ponto não permitem estimar variabilidade (desvio padrão); "
+            "trate a média desses grupos como uma observação pontual, não uma caracterização do clima do local."
+        )
     
     # Análise de correlação (se houver dados suficientes)
     if len(pontos_com_zcl) > 10:
@@ -472,7 +509,7 @@ def renderizar_analise_estatistica(dados_usuario, area_de_interesse_geojson, gdf
             subset = pontos_com_zcl[pontos_com_zcl['classe_texto'] == classe]
             if subset.empty:
                 continue
-            cor = CORES_LCZ.get(classe, "#0f766e")
+            cor = CORES_LCZ_EXT.get(classe, "#0f766e")
             fig_corr.add_trace(
                 go.Scatter(
                     x=subset['latitude'],
@@ -583,7 +620,19 @@ def gerar_relatorio_automatico(dados_usuario, area_de_interesse_geojson, gdf_zcl
 ## 📊 Resumo Executivo
 
 """
-    
+
+    metadados = st.session_state.get('metadados_observacao') or {}
+    if any(metadados.values()):
+        relatorio += "### 🧾 Metadados da observação\n"
+        rotulos = {
+            'variavel': 'Variável', 'unidade': 'Unidade', 'origem': 'Origem',
+            'instrumento': 'Instrumento', 'data': 'Data', 'horario': 'Horário',
+        }
+        for chave, rotulo in rotulos.items():
+            if metadados.get(chave):
+                relatorio += f"- **{rotulo}:** {metadados[chave]}\n"
+        relatorio += "\n"
+
     # Análise da área de interesse
     if area_de_interesse_geojson:
         zcl_na_area = processamento.filtrar_dados_por_area(gdf_zcl_base, area_de_interesse_geojson)
@@ -608,21 +657,26 @@ def gerar_relatorio_automatico(dados_usuario, area_de_interesse_geojson, gdf_zcl
         
         if not pontos_na_area.empty:
             pontos_com_zcl = processamento.juntar_dados_espaciais(pontos_na_area, gdf_zcl_base)
-            pontos_com_zcl = pontos_com_zcl.dropna(subset=['zcl_classe'])
-            
+            n_sem_cobertura_rel = pontos_com_zcl['zcl_classe'].isna().sum()
+            pontos_com_zcl['zcl_classe'] = pontos_com_zcl['zcl_classe'].fillna(SEM_COBERTURA_ZCL)
+
+            desvio_geral_txt = "não estimável (n=1)" if len(pontos_com_zcl) == 1 else f"{pontos_com_zcl['valor'].std():.2f}"
             relatorio += f"""
 
 ### 📍 Dados de Campo
 - **Total de Pontos Analisados:** {len(pontos_com_zcl)}
 - **Valor Médio:** {pontos_com_zcl['valor'].mean():.2f}
-- **Desvio Padrão:** {pontos_com_zcl['valor'].std():.2f}
+- **Desvio Padrão:** {desvio_geral_txt}
 - **Amplitude:** {pontos_com_zcl['valor'].max() - pontos_com_zcl['valor'].min():.2f}
-
-#### Estatísticas por Zona Climática Local:
 """
+            if n_sem_cobertura_rel > 0:
+                relatorio += f"- **Sem cobertura ZCL:** {n_sem_cobertura_rel} ponto(s) fora de qualquer polígono mapeado.\n"
+
+            relatorio += "\n#### Estatísticas por Zona Climática Local:\n"
             stats_por_zcl = pontos_com_zcl.groupby('zcl_classe')['valor'].agg(['count', 'mean', 'std']).round(2)
             for zcl, row in stats_por_zcl.iterrows():
-                relatorio += f"- **{zcl}:** {row['count']} pontos, média {row['mean']:.2f} ± {row['std']:.2f}\n"
+                desvio_txt = "não estimável (n=1)" if row['count'] == 1 else f"{row['std']:.2f}"
+                relatorio += f"- **{zcl}:** {int(row['count'])} pontos, média {row['mean']:.2f} ± {desvio_txt}\n"
     
     # Monta achados a partir dos números já calculados acima (não é texto fixo genérico)
     relatorio += "\n\n## 🎓 Interpretação e Recomendações\n\n### Principais Achados:\n"
@@ -660,6 +714,20 @@ def gerar_relatorio_automatico(dados_usuario, area_de_interesse_geojson, gdf_zcl
 - Incluir medições de umidade relativa e velocidade do vento
 - Analisar a influência de fatores como albedo e rugosidade da superfície
 - Comparar com dados de sensoriamento remoto
+
+## ⚠️ Limites de Interpretação
+
+- **Observação pontual x caracterização do clima:** poucos pontos medidos em um só horário mostram um
+  contraste local naquele momento; eles não caracterizam o clima da área nem substituem uma série
+  temporal mais longa.
+- **Contraste térmico local x ilha de calor:** uma diferença de temperatura entre dois pontos do seu
+  levantamento é um contraste térmico local; caracterizar uma ilha de calor urbana exige comparação
+  sistemática entre área urbana e referência rural/não urbanizada ao longo do tempo.
+- **ZCL x microclima:** a Zona Climática Local (ZCL) descreve a forma urbana típica da área (estrutura,
+  cobertura, materiais); o microclima observado num ponto específico também depende de sombra, vento e
+  superfícies imediatas, que podem variar dentro de uma mesma ZCL.
+- **Verifique a origem dos dados-base (ZCL e temperatura) em `data/README.md`** antes de tratar os
+  resultados como medição real da sua cidade — alguns arquivos de exemplo são demonstrativos.
 
 ## 📚 Referências Metodológicas
 

@@ -11,6 +11,7 @@ import os
 import time
 import warnings
 import tempfile
+import unicodedata
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -28,12 +29,13 @@ import httpx
 warnings.filterwarnings("ignore")
 
 # Diretório de cache em disco compartilhado por todos os downloads pesados da
-# LCZ4py (mapa LCZ, parâmetros urbanos, Sentinel-2) — mesmo padrão que a
-# própria LCZ4py já usa para a maioria das suas funções, exceto lcz_get_ucp
-# (que por padrão usa outro diretório); apontamos explicitamente para este
-# aqui em cada wrapper para manter um único local, governado por
-# `_podar_cache_lcz4py`.
-CACHE_DIR_LCZ4PY = os.path.expanduser("~/.lcz4r_cache")
+# LCZ4py (mapa LCZ, parâmetros urbanos, Sentinel-2). O padrão fica em /tmp
+# porque é o local mais previsivelmente gravável no Streamlit Cloud; pode ser
+# sobrescrito por LCZ4R_CACHE_DIR quando houver um volume persistente.
+CACHE_DIR_LCZ4PY = os.environ.get(
+    "LCZ4R_CACHE_DIR",
+    os.path.join(tempfile.gettempdir(), "lcz4r_cache"),
+)
 
 # Teto de tamanho do cache, em MB. No Streamlit Community Cloud o app roda num
 # contêiner compartilhado por TODOS os usuários simultâneos, com disco efêmero
@@ -176,6 +178,92 @@ CORES_LCZ = {
     'LCZ G': '#656BFA'
 }
 
+LCZ_MAPAS_LOCAIS = {
+    "sao paulo": "sao_paulo_zcl.geojson",
+    "juiz de fora": "juiz_de_fora_zcl.geojson",
+}
+
+
+def _normalizar_nome_cidade(nome):
+    """Normaliza o nome para comparar entradas como 'São Paulo, Brazil'."""
+    texto = unicodedata.normalize("NFKD", str(nome or ""))
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    texto = texto.lower()
+    for char in ",.;:/\\()[]{}":
+        texto = texto.replace(char, " ")
+    return " ".join(texto.split())
+
+
+def _arquivo_lcz_local_para_cidade(city):
+    """Retorna o GeoJSON local quando a cidade digitada já existe no projeto."""
+    nome = _normalizar_nome_cidade(city)
+    for chave, arquivo in LCZ_MAPAS_LOCAIS.items():
+        if chave in nome:
+            return Path(__file__).resolve().parent.parent / "data" / arquivo
+    return None
+
+
+def _rasterizar_lcz_local(caminho_geojson, max_pixels_lado=900):
+    """Rasteriza uma base LCZ local para evitar leitura remota do COG global."""
+    gdf = gpd.read_file(caminho_geojson)
+    if gdf.crs is None:
+        gdf = gdf.set_crs("EPSG:4326")
+    if gdf.crs.to_string() != "EPSG:4326":
+        gdf = gdf.to_crs("EPSG:4326")
+
+    minx, miny, maxx, maxy = gdf.total_bounds
+    largura = max(maxx - minx, 1e-6)
+    altura = max(maxy - miny, 1e-6)
+    escala = max_pixels_lado / max(largura, altura)
+    width = max(64, min(max_pixels_lado, int(np.ceil(largura * escala))))
+    height = max(64, min(max_pixels_lado, int(np.ceil(altura * escala))))
+    transform = rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
+
+    shapes = []
+    for _, row in gdf.iterrows():
+        try:
+            classe = int(row["lcz"])
+        except (TypeError, ValueError):
+            continue
+        if 1 <= classe <= 17 and row.geometry is not None and not row.geometry.is_empty:
+            shapes.append((row.geometry, classe))
+
+    if not shapes:
+        raise DataProcessingError(f"Nenhuma classe LCZ válida encontrada em {caminho_geojson.name}.")
+
+    data = features.rasterize(
+        shapes,
+        out_shape=(height, width),
+        transform=transform,
+        fill=255,
+        all_touched=True,
+        dtype="uint8",
+    )
+    profile = {
+        "driver": "GTiff",
+        "height": height,
+        "width": width,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
+        "nodata": 255,
+    }
+
+    cache = Path(CACHE_DIR_LCZ4PY)
+    cache.mkdir(parents=True, exist_ok=True)
+    raster_path = cache / f"local_{caminho_geojson.stem}.tif"
+    with rasterio.open(raster_path, "w", **profile) as dst:
+        dst.write(data, 1)
+
+    return data, profile, str(raster_path)
+
+
+def _erro_http_raster_remoto(erro):
+    """Identifica erros GDAL/rasterio típicos de gateway timeout/servidor remoto."""
+    texto = str(erro).lower()
+    return any(codigo in texto for codigo in ["http response code: 504", "http response code: 502", "http response code: 503"])
+
 
 def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False, return_path=False):
     """
@@ -227,6 +315,14 @@ def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False, return
     if city is None and roi is None:
         raise ValueError("Forneça um nome de cidade ou um polígono ROI")
 
+    if city is not None and roi is None:
+        caminho_local = _arquivo_lcz_local_para_cidade(city)
+        if caminho_local and caminho_local.exists():
+            data, profile, raster_path = _rasterizar_lcz_local(caminho_local)
+            if return_path:
+                return data, profile, raster_path
+            return data, profile
+
     from LCZ4py.general import lcz_get_map as _lcz4py_get_map
 
     # A geocodificação (Nominatim/OpenStreetMap, dentro do LCZ4py) já tenta 3x
@@ -243,13 +339,24 @@ def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False, return
         if espera:
             time.sleep(espera)
         try:
-            clipped_path = _lcz4py_get_map(city=city, roi=roi, isave_map=False, cache=True, verbose=False)
+            with rasterio.Env(
+                GDAL_HTTP_MAX_RETRY="4",
+                GDAL_HTTP_RETRY_DELAY="3",
+                GDAL_HTTP_CONNECTTIMEOUT="20",
+                GDAL_HTTP_TIMEOUT="120",
+                VSI_CACHE="TRUE",
+                VSI_CACHE_SIZE="50000000",
+            ):
+                clipped_path = _lcz4py_get_map(city=city, roi=roi, isave_map=False, cache=True, verbose=False)
             ultimo_retry_error = None
             break
         except (requests.exceptions.ConnectionError,
                 requests.exceptions.Timeout,
                 NewConnectionError,
                 OSError) as e:
+            if _erro_http_raster_remoto(e):
+                ultimo_retry_error = e
+                continue
             raise ConnectionError(
                 "Falha na conexão com o serviço de dados LCZ. "
                 "Possíveis causas:\n"
@@ -271,18 +378,28 @@ def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False, return
             ultimo_retry_error = e
             continue
         except Exception as e:
+            if _erro_http_raster_remoto(e):
+                ultimo_retry_error = e
+                continue
             raise DataProcessingError(f"Erro no processamento dos dados LCZ: {e}")
 
     if ultimo_retry_error is not None:
-        causa = ultimo_retry_error.last_attempt.exception() if ultimo_retry_error.last_attempt else None
+        causa = (
+            ultimo_retry_error.last_attempt.exception()
+            if isinstance(ultimo_retry_error, RetryError) and ultimo_retry_error.last_attempt
+            else ultimo_retry_error
+        )
         detalhe = (
             f" (HTTP {causa.response.status_code})"
             if isinstance(causa, httpx.HTTPStatusError) else ""
         )
+        if _erro_http_raster_remoto(causa):
+            detalhe = " (HTTP 504)"
         raise ConnectionError(
-            f"O serviço de busca de cidades (OpenStreetMap/Nominatim) está temporariamente "
-            f"sobrecarregado ou limitando pedidos{detalhe}, mesmo após tentar de novo. Isso não "
-            "tem relação com o nome da cidade — espere um pouco mais e tente novamente."
+            "O servidor remoto do raster LCZ global respondeu com timeout"
+            f"{detalhe}, mesmo após tentar de novo. Isso costuma acontecer no Streamlit Cloud "
+            "quando o COG global está lento. Para São Paulo e Juiz de Fora, use as bases locais "
+            "já incluídas; para outras cidades, tente novamente mais tarde ou reduza a área."
         )
 
     with rasterio.open(clipped_path) as src:

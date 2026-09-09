@@ -175,7 +175,7 @@ def renderizar_aba_mapa():
     st.caption("Fonte: mapa global de LCZ (WUDAPT), obtido e recortado com LCZ4py.")
 
     with st.expander("⬇️ Baixar dados do mapa"):
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             # Só exporta a imagem via Kaleido (headless browser, ~15-20s) quando
             # pedido — gerá-la a cada rerun do script (inclusive ao trocar de
@@ -188,6 +188,19 @@ def renderizar_aba_mapa():
             geojson_data = st.session_state.lcz_data.to_json()
             st.download_button("🗺️ GeoJSON", geojson_data, f"lcz_data_{cidade}.geojson", "application/json",
                                 use_container_width=True)
+        with col3:
+            raster_path = st.session_state.lcz_raster_path
+            if raster_path:
+                try:
+                    with open(raster_path, "rb") as f:
+                        st.download_button(
+                            "🛰️ Raster (GeoTIFF)", f.read(),
+                            f"lcz_map_{cidade}.tif", "image/tiff",
+                            use_container_width=True,
+                            help="Resolução nativa do mapa LCZ (~100m), como recortado da fonte original.",
+                        )
+                except OSError as e:
+                    st.caption(f"GeoTIFF indisponível: {e}")
 
     st.markdown("##### Explore por classe")
     st.caption("Clique em um polígono para entender a classe LCZ, o aquecimento esperado e as ações de mitigação. Áreas sem classificação ficam transparentes.")
@@ -236,7 +249,7 @@ def renderizar_mapa_maplibre():
 .toolbar select {{ border:0; background:transparent; font-weight:700; color:#163044 }} .toolbar button {{ cursor:pointer; font-weight:700 }}
 .layers {{ position:absolute; z-index:4; top:54px; right:12px; width:min(270px,calc(100% - 24px)); max-height:420px; overflow:auto; padding:12px; display:none; background:#fff; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 3px 14px #0f172a2b }}
 .layers.open {{ display:block }} .layers h3 {{ margin:0 0 8px; font-size:13px }} .layer {{ display:flex; gap:7px; padding:4px 0; font-size:11px }}
-.maplibregl-popup-content {{ width:310px; max-width:calc(100vw - 44px); font-size:12px; line-height:1.45 }} .maplibregl-popup-content h3 {{ color:#0f766e; margin:0 0 8px }} .popup-label {{ display:block; margin-top:7px; color:#475569; font-weight:700; font-size:11px }}
+.maplibregl-popup-content {{ width:230px; max-width:calc(100vw - 32px); font-size:11px; line-height:1.35; padding:0 0 10px }} .maplibregl-popup-content h3 {{ margin:0 0 8px; padding:8px 28px 8px 10px; border-radius:4px 4px 0 0; color:#fff; font-size:13px }} .popup-body {{ padding:0 12px }} .popup-label {{ display:block; margin-top:6px; color:#475569; font-weight:700; font-size:9.5px; text-transform:uppercase; letter-spacing:.03em }} .popup-label:first-child {{ margin-top:0 }} .maplibregl-popup-close-button {{ font-size:16px; color:#fff; padding:2px 6px }}
 @media (max-width:650px) {{ #map {{ height:620px }} }}
 </style></head><body><div id="map"></div>
 <div class="toolbar"><label>Estilo <select id="style">{options}</select></label><label>Transparência <input id="opacity" type="range" min="0" max="100" value="76" step="1" aria-label="Transparência da camada LCZ"><output id="opacity-value">76%</output></label><button id="layer-button">Camadas</button><button id="reset">Recentrar</button></div>
@@ -245,7 +258,7 @@ def renderizar_mapa_maplibre():
 const data={geojson}; const colors={colors}; let hoveredId=null; let lczOpacity=.76; const map=new maplibregl.Map({{container:'map',style:'{styles['Liberty']}',center:[-46.63,-23.55],zoom:10,pitch:60,bearing:55}}); map.addControl(new maplibregl.NavigationControl({{visualizePitch:true}}),'bottom-right'); map.dragRotate.enable();
 function bounds(){{const b=new maplibregl.LngLatBounds(); const walk=c=>Array.isArray(c[0])?c.forEach(walk):b.extend(c); data.features.forEach(f=>walk(f.geometry.coordinates)); return b;}}
 function safe(v){{return String(v||'').replace(/[&<>"']/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c]));}}
-function popup(e){{const p=e.features[0].properties||{{}};const title=safe(p.zcl_classe||'Zona LCZ');const html='<h3>'+title+'</h3>'+'<span class="popup-label">O que é</span><div>'+safe(p.descricao||'Descrição não disponível para esta área.')+'</div>'+'<span class="popup-label">O que esperar</span><div>'+safe(p.efeito_temp||'Efeito térmico não disponível para esta área.')+'</div>'+'<span class="popup-label">Contribuição para a ilha de calor</span><div>'+safe(p.ilha_calor||'Informação não disponível para esta área.')+'</div>'+'<span class="popup-label">Como atuar</span><div>'+safe(p.intervencao||'Consulte dados locais antes de propor uma intervenção.')+'</div>';new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);}}
+function popup(e){{const p=e.features[0].properties||{{}};const title=safe(p.zcl_classe||'Zona LCZ');const cor=colors[p.zcl_classe]||'#163044';const html='<h3 style="background:'+cor+'">'+title+'</h3><div class="popup-body">'+'<span class="popup-label">O que é</span><div>'+safe(p.descricao||'Descrição não disponível para esta área.')+'</div>'+'<span class="popup-label">Efeito esperado</span><div>'+safe(p.efeito_temp||'Efeito térmico não disponível para esta área.')+'</div>'+'<span class="popup-label">Ilha de calor</span><div>'+safe(p.ilha_calor||'Informação não disponível para esta área.')+'</div>'+'<span class="popup-label">Como atuar</span><div>'+safe(p.intervencao||'Consulte dados locais antes de propor uma intervenção.')+'</div></div>';new maplibregl.Popup({{maxWidth:'230px'}}).setLngLat(e.lngLat).setHTML(html).addTo(map);}}
 function overlay(){{['lcz-fill','lcz-line'].forEach(id=>{{if(map.getLayer(id))map.removeLayer(id);}});if(map.getSource('lcz'))map.removeSource('lcz');map.addSource('lcz',{{type:'geojson',data,generateId:true}});const noClass=['==',['get','zcl_classe'],null];const color=['case',noClass,'rgba(0,0,0,0)',['match',['get','zcl_classe'],...Object.entries(colors).flat(),'rgba(0,0,0,0)']];map.addLayer({{id:'lcz-fill',type:'fill',source:'lcz',paint:{{'fill-color':color,'fill-opacity':['case',noClass,0,lczOpacity]}}}});map.addLayer({{id:'lcz-line',type:'line',source:'lcz',paint:{{'line-color':'#163044','line-opacity':['case',noClass,0,Math.min(.7,lczOpacity+.1)],'line-width':['case',['boolean',['feature-state','hover'],false],2.4,.65]}}}});map.on('click','lcz-fill',popup);map.on('mouseenter','lcz-fill',e=>{{map.getCanvas().style.cursor='pointer';if(hoveredId!==null)map.setFeatureState({{source:'lcz',id:hoveredId}},{{hover:false}});hoveredId=e.features[0].id;map.setFeatureState({{source:'lcz',id:hoveredId}},{{hover:true}});}});map.on('mouseleave','lcz-fill',()=>{{map.getCanvas().style.cursor='';if(hoveredId!==null)map.setFeatureState({{source:'lcz',id:hoveredId}},{{hover:false}});hoveredId=null;}});map.fitBounds(bounds(),{{padding:35,maxZoom:13,duration:500}});}}
 function layers(){{const list=document.getElementById('layer-list');list.innerHTML='';(map.getStyle().layers||[]).forEach(layer=>{{if(['lcz-fill','lcz-line'].includes(layer.id))return;const row=document.createElement('label');row.className='layer';const input=document.createElement('input');input.type='checkbox';input.checked=map.getLayoutProperty(layer.id,'visibility')!=='none';input.onchange=()=>map.setLayoutProperty(layer.id,'visibility',input.checked?'visible':'none');row.append(input,document.createTextNode(layer.id));list.append(row);}});}}
 map.on('load',()=>{{overlay();layers();}}); function change(url,is3d){{map.setStyle(url);map.dragRotate[is3d?'enable':'disable']();map.once('idle',()=>{{overlay();layers();}});map.once('style.load',()=>map.easeTo({{pitch:is3d?60:0,bearing:is3d?55:0,duration:700}}));}}
@@ -287,8 +300,56 @@ def renderizar_aba_area():
         title=dict(text=f"Área por classe LCZ — {st.session_state.lcz_city_name or 'Cidade'}"),
         showlegend=False, height=500, margin=dict(t=40),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    cidade_arquivo = (st.session_state.lcz_city_name or "cidade").lower().replace(" ", "_")
+
+    def _grafico_com_png(fig_extra, nome_arquivo, key):
+        st.plotly_chart(fig_extra, use_container_width=True)
+        if st.button("📸 Gerar PNG", key=f"png_btn_{key}"):
+            png_data = fig_extra.to_image(format="png", scale=2)
+            st.download_button("⬇️ Baixar PNG", png_data, nome_arquivo, "image/png", key=f"png_dl_{key}")
+
+    _grafico_com_png(fig, f"lcz_area_{cidade_arquivo}.png", "principal")
     st.caption("Fonte: mapa global de LCZ (WUDAPT); área calculada por contagem de pixels com LCZ4py.")
+
+    st.markdown("##### Outras visualizações")
+    tab_pizza, tab_grupo, tab_frag = st.tabs(["🥧 Composição", "🏙️ Construída x Natural", "🧩 Fragmentação"])
+
+    with tab_pizza:
+        fig_pizza = px.pie(
+            area_stats, values='area_total_km2', names='zcl_classe',
+            color='zcl_classe', color_discrete_map=CORES_LCZ, hole=0.4,
+            title="Composição da área por classe LCZ",
+        )
+        fig_pizza.update_layout(height=460)
+        _grafico_com_png(fig_pizza, f"lcz_composicao_{cidade_arquivo}.png", "pizza")
+
+    with tab_grupo:
+        fig_grupo = px.bar(
+            {"Grupo": ["Construída (LCZ 1-10)", "Natural (LCZ A-G)"], "Área (km²)": [urbano, natural]},
+            x="Grupo", y="Área (km²)", color="Grupo",
+            color_discrete_sequence=["#c2410c", "#16a34a"], text_auto=".1f",
+            title="Área construída vs. natural",
+        )
+        fig_grupo.update_layout(height=420, showlegend=False)
+        _grafico_com_png(fig_grupo, f"lcz_construida_natural_{cidade_arquivo}.png", "grupo")
+
+    with tab_frag:
+        st.caption(
+            "Quantos polígonos separados cada classe tem — classes muito fragmentadas (muitos "
+            "polígonos pequenos e espalhados) indicam padrões urbanos mais dispersos, ao contrário "
+            "de poucos polígonos grandes e contínuos."
+        )
+        fig_frag = px.scatter(
+            area_stats, x='num_poligonos', y='area_media_km2', size='area_total_km2',
+            color='zcl_classe', color_discrete_map=CORES_LCZ,
+            labels={
+                'num_poligonos': 'Número de polígonos', 'area_media_km2': 'Área média por polígono (km²)',
+                'zcl_classe': 'Classe LCZ',
+            },
+            title="Fragmentação por classe LCZ",
+        )
+        fig_frag.update_layout(height=460)
+        _grafico_com_png(fig_frag, f"lcz_fragmentacao_{cidade_arquivo}.png", "frag")
 
     with st.expander("📋 Tabela e mais opções"):
         st.dataframe(

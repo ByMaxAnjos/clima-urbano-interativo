@@ -46,6 +46,17 @@ CACHE_DIR_LCZ4PY = os.environ.get(
 # (Python, GDAL/rasterio, etc.) no plano gratuito.
 CACHE_LIMITE_MB = 500
 
+# O LCZ4py baixa o raster global de LCZ de um único arquivo hospedado no
+# Zenodo (~1GB); quando o Zenodo está lento/instável, toda cidade sem base
+# local (só São Paulo e Juiz de Fora têm) falha. Mantemos aqui um espelho do
+# mesmo arquivo, publicado como asset de release neste repositório GitHub,
+# como fonte alternativa mais estável — tentado primeiro, com o Zenodo
+# original como respaldo caso o espelho também falhe.
+LCZ_GLOBAL_MIRROR_URL = os.environ.get(
+    "LCZ4R_GLOBAL_MIRROR_URL",
+    "https://github.com/ByMaxAnjos/clima-urbano-interativo/releases/download/lcz-global-v1/lcz_filter_v3.tif",
+)
+
 
 def _podar_cache_lcz4py(cache_dir=CACHE_DIR_LCZ4PY, limite_mb=CACHE_LIMITE_MB):
     """
@@ -269,11 +280,14 @@ def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False, return
     """
     Download e processamento do mapa global de Zonas Climáticas Locais (LCZ).
 
-    Wrapper fino sobre LCZ4py.general.lcz_get_map: delega geocodificação, streaming
+    Wrapper fino sobre o motor interno do LCZ4py: delega geocodificação, streaming
     do COG global e recorte da área de interesse para o pacote (que já traz cache em
     disco de dois níveis, streaming via /vsicurl/ e retries), e adapta o retorno
     (caminho de arquivo) para o contrato (dados numpy, perfil rasterio) que o resto
-    da plataforma (modules/explorar.py) já espera.
+    da plataforma (modules/explorar.py) já espera. Para cidades sem base local
+    (só São Paulo e Juiz de Fora têm), baixa o raster global de LCZ_GLOBAL_MIRROR_URL
+    (espelho no GitHub Release deste repo) e cai para o Zenodo original só se o
+    espelho também falhar — mitiga a instabilidade do host único do Zenodo.
 
     Parameters
     ----------
@@ -323,7 +337,16 @@ def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False, return
                 return data, profile, raster_path
             return data, profile
 
-    from LCZ4py.general import lcz_get_map as _lcz4py_get_map
+    from LCZ4py._internal._lcz_map_engine import run_async_core as _lcz4py_run_async_core
+    from LCZ4py.general.lcz_get_map import GLOBAL_URL as _URL_ZENODO, DEFAULT_CACHE_DIR as _CACHE_DIR_LCZ4PY_GLOBAL
+
+    # Alterna entre o espelho (GitHub Release) e o Zenodo original a cada
+    # tentativa, em vez de depender só de um host — chama run_async_core
+    # diretamente (em vez do wrapper LCZ4py.general.lcz_get_map) porque ele
+    # aceita `url` como parâmetro de verdade, sem precisar mutar estado
+    # global do pacote (que seria arriscado com múltiplas sessões concorrentes
+    # no mesmo processo do Streamlit Cloud).
+    fontes_raster = [u for u in [LCZ_GLOBAL_MIRROR_URL, _URL_ZENODO] if u]
 
     # A geocodificação (Nominatim/OpenStreetMap, dentro do LCZ4py) já tenta 3x
     # sozinha antes de desistir com RetryError — normalmente porque o serviço
@@ -338,6 +361,7 @@ def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False, return
     for tentativa, espera in enumerate([0] + esperas_extra):
         if espera:
             time.sleep(espera)
+        url_da_vez = fontes_raster[tentativa % len(fontes_raster)]
         try:
             with rasterio.Env(
                 GDAL_HTTP_MAX_RETRY="4",
@@ -347,7 +371,10 @@ def lcz_get_map(city=None, roi=None, isave_map=False, isave_global=False, return
                 VSI_CACHE="TRUE",
                 VSI_CACHE_SIZE="50000000",
             ):
-                clipped_path = _lcz4py_get_map(city=city, roi=roi, isave_map=False, cache=True, verbose=False)
+                clipped_path = _lcz4py_run_async_core(
+                    city=city, roi=roi, url=url_da_vez,
+                    cache_dir=_CACHE_DIR_LCZ4PY_GLOBAL, isave_map=False, verbose=False,
+                )
             ultimo_retry_error = None
             break
         except (requests.exceptions.ConnectionError,

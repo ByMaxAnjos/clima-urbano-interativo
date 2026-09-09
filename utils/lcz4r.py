@@ -631,10 +631,14 @@ def process_lcz_map(raster_data, raster_profile, factor=5):
     geopandas.GeoDataFrame
         GeoDataFrame com polígonos LCZ processados
     """
-    # Agregar raster
-    aggregated, new_transform = aggregate_raster(
-        raster_data, raster_profile["transform"], factor
-    )
+    # Agregar raster (factor<=1 preserva a resolução nativa do pixel — evita o
+    # loop Python de aggregate_raster ficar iterando bloco a bloco à toa)
+    if factor <= 1:
+        aggregated, new_transform = raster_data, raster_profile["transform"]
+    else:
+        aggregated, new_transform = aggregate_raster(
+            raster_data, raster_profile["transform"], factor
+        )
     
     # Converter para polígonos
     polygons = raster_to_polygons(
@@ -1120,6 +1124,14 @@ INDICES_ESPECTRAIS_FONTE = (
     "estatísticas por LCZ calculadas com LCZ4py."
 )
 
+# Ano nominal do mapa global de LCZ (Zenodo record 8419340, readme.txt: "Representative
+# for the nominal year of 2018" — Demuzere et al., 2022, ESSD, doi:10.5194/essd-14-3835-2022).
+# Usado como padrão na busca de imagens Sentinel-2 para os índices espectrais, para não
+# comparar uma classificação LCZ de 2018 com cobertura do solo de anos muito mais recentes.
+# Não se aplica às bases locais (São Paulo/Juiz de Fora) com vintage não documentado — ver
+# data/README.md.
+LCZ_ANO_REFERENCIA_GLOBAL = 2018
+
 
 def _ajustar_layout_plotly(fig, title=None, height=560, legend=True):
     """Aplica um tema legível aos gráficos gerados pela LCZ4py."""
@@ -1203,8 +1215,8 @@ def _fundir_resultados_ucp(resultados):
 
     if not rasters:
         raise RuntimeError(
-            "No variables were successfully processed. "
-            f"Failed: {[f[0] for f in falhas]}"
+            "No variables were successfully processed. Failed: "
+            + "; ".join(f"{nome}: {erro}" for nome, erro in falhas)
         )
 
     combined_rasters = xr.Dataset(rasters)
@@ -1304,7 +1316,12 @@ def lcz_get_parametros_urbanos(raster_path, variables=None, cache_dir=CACHE_DIR_
             process_wumpod="wumpod" in cats,
             process_vegetation="vegetacao" in cats,
             process_directional=False,
-            use_threads=False,
+            # A LCZ4py instalada rejeita use_threads=False de cara (o processor
+            # guarda uma requests.Session e um diskcache.FanoutCache que não
+            # dá para picklar para um ProcessPoolExecutor) — True é o único
+            # valor suportado, e é thread-based (I/O-bound), então n_workers=1
+            # continua controlando a concorrência sem processos extras.
+            use_threads=True,
             verbose=False,
             fail_fast=False,
         )
@@ -1336,8 +1353,8 @@ def lcz_get_parametros_urbanos(raster_path, variables=None, cache_dir=CACHE_DIR_
             resultado = _corrigir_lista_variaveis_ucp(_fundir_resultados_ucp(resultados_parciais))
         except Exception as e:
             raise RuntimeError(
-                "No variables were successfully processed. "
-                f"Failed: {[f[0] for f in falhas]}"
+                "No variables were successfully processed. Failed: "
+                + "; ".join(f"{nome}: {erro}" for nome, erro in falhas)
             ) from e
         resultado["failed_variables"] = (resultado.get("failed_variables") or []) + falhas
         _podar_cache_lcz4py(cache_dir)
@@ -1426,14 +1443,16 @@ def lcz_plot_parametro_urbano(ucp_result, parametro):
 BANDAS_SENTINEL2 = ["B04", "B03", "B02", "B08", "B11", "B12"]
 
 
-def lcz_baixar_sentinel2(raster_path, dias=90, cobertura_nuvem_max=30):
+def lcz_baixar_sentinel2(raster_path, dias=90, cobertura_nuvem_max=30, ano_referencia=LCZ_ANO_REFERENCIA_GLOBAL):
     """
     Baixa bandas do Sentinel-2 (Microsoft Planetary Computer) recortadas na
     área do mapa LCZ já baixado, para uso no cálculo de índices espectrais.
 
-    Wrapper fino sobre LCZ4py.general.lcz_get_planetary_computer: fixa uma
-    janela recente (`dias`) em vez de deixar o intervalo em aberto, para
-    manter o download leve o suficiente para rodar no Streamlit Cloud, e pede
+    Wrapper fino sobre LCZ4py.general.lcz_get_planetary_computer: por padrão,
+    busca imagens do ano nominal do mapa global de LCZ (`ano_referencia`,
+    LCZ_ANO_REFERENCIA_GLOBAL=2018) em vez de "os últimos N dias" — comparar
+    a classificação de 2018 com cobertura do solo de anos muito mais recentes
+    misturaria duas datas diferentes sem dizer isso ao usuário. Pede
     explicitamente `BANDAS_SENTINEL2` (em vez do atalho padrão da coleção, que
     só traz 4 bandas) para que todo índice do catálogo didático consiga ser
     calculado.
@@ -1443,9 +1462,15 @@ def lcz_baixar_sentinel2(raster_path, dias=90, cobertura_nuvem_max=30):
     raster_path : str
         Caminho do GeoTIFF do mapa LCZ recortado
     dias : int, default 90
-        Tamanho da janela de busca por imagens recentes com pouca nuvem
+        Tamanho da janela de busca, usada só quando `ano_referencia=None`
+        (busca as imagens mais recentes a partir de hoje, sem alinhar com o
+        ano do mapa LCZ)
     cobertura_nuvem_max : float, default 30
         Cobertura de nuvem máxima aceita (%) nas cenas usadas
+    ano_referencia : int or None, default LCZ_ANO_REFERENCIA_GLOBAL (2018)
+        Ano usado para a busca (janeiro a dezembro desse ano). Passe None
+        para usar a janela mais recente (`dias` dias a partir de hoje) em vez
+        disso — por exemplo, para comparar com condições atuais.
 
     Returns
     -------
@@ -1455,8 +1480,12 @@ def lcz_baixar_sentinel2(raster_path, dias=90, cobertura_nuvem_max=30):
     from datetime import date, timedelta
     from LCZ4py.general import lcz_get_planetary_computer as _lcz4py_get_pc
 
-    fim = date.today()
-    inicio = fim - timedelta(days=dias)
+    if ano_referencia is not None:
+        inicio = date(ano_referencia, 1, 1)
+        fim = date(ano_referencia, 12, 31)
+    else:
+        fim = date.today()
+        inicio = fim - timedelta(days=dias)
 
     resultado = _lcz4py_get_pc(
         raster_path,

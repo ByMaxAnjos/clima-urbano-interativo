@@ -16,6 +16,7 @@ xarray
 h5netcdf
 pystac-client
 planetary-computer
+dask
 # xarray/h5netcdf e pystac-client/planetary-computer são usados por
 # lcz_get_lst (temperatura de superfície) e lcz_grid_pollution_ghap
 # (qualidade do ar), ambos em Explorar, mas não estão nas dependências core
@@ -25,6 +26,12 @@ planetary-computer
 # Planetary Computer (import lazy, só falha quando source="sentinel3" é
 # realmente usado — por isso passou despercebido em teste local, onde os
 # dois já estavam instalados por outro motivo).
+#
+# dask: LCZ4py.general.lcz_get_ucp abre as camadas WUMPOD (elevação, cobertura
+# arbórea, etc.) via `rioxarray.open_rasterio(..., chunks='auto')`, que exige
+# dask.array. Sem essa dependência, a exceção real (ModuleNotFoundError) é
+# capturada e só logada em nível DEBUG dentro do LCZ4py — o usuário só via
+# "No variables were successfully processed", sem pista da causa real.
 #
 # LCZ4py não está publicado no PyPI ainda — instalado direto do GitHub
 # (traz como dependências: polars, pyarrow, scipy, httpx, aiohttp, rioxarray,

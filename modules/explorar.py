@@ -9,6 +9,19 @@ import json
 from utils.lcz4r import lcz_get_map, process_lcz_map, enhance_lcz_data, lcz_plot_map, CORES_LCZ
 
 
+def _suavizar_geometria(geom, distancia):
+    """Arredonda os cantos retos do polígono derivado do raster com um buffer
+    de fechamento (dilata depois erode, join arredondado) — visualmente suave,
+    e como a dilatação e a erosão usam a mesma distância, a área muda pouco
+    (testado <1% para `distancia` = meio pixel). Só para exibição — o
+    GeoDataFrame de origem (área/estatísticas, download) não é alterado."""
+    if geom is None or geom.is_empty:
+        return geom
+    return geom.buffer(distancia, join_style="round", cap_style="round").buffer(
+        -distancia, join_style="round", cap_style="round"
+    )
+
+
 def init_session_state():
     """Inicializa o estado da sessão com valores padrão."""
     defaults = {
@@ -28,6 +41,7 @@ def init_session_state():
         'lcz_indices_result': None,
         'lcz_indices_stats': None,
         'lcz_indices_requested': [],
+        'lcz_indices_ano_referencia': None,
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -118,7 +132,11 @@ def processar_mapa_lcz(cidade_nome):
             from utils.lcz4r import GeocodeError, DataProcessingError
 
             data, profile, cached_raster_path = lcz_get_map(cidade_nome, isave_map=False, return_path=True)
-            lcz_gdf = process_lcz_map(data, profile)
+            # Resolução nativa (~100m) para a maioria das cidades — só agrega
+            # (perde detalhe) se o recorte for enorme (ex.: uma metrópole
+            # inteira), para não travar a vetorização/dissolve.
+            fator_agregacao = 1 if data.size <= 4_000_000 else 3
+            lcz_gdf = process_lcz_map(data, profile, factor=fator_agregacao)
             enhanced_gdf = enhance_lcz_data(lcz_gdf)
 
             save_lcz_data_to_session(data, profile, cidade_nome, enhanced_gdf, raster_path=cached_raster_path)
@@ -176,7 +194,18 @@ def renderizar_mapa_maplibre():
     gdf_lcz = st.session_state.lcz_data
     if gdf_lcz is None or gdf_lcz.empty:
         return
-    geojson = json.dumps(json.loads(gdf_lcz.to_json()), ensure_ascii=False).replace("</", "<\\/")
+    # Suaviza só a cópia usada neste mapa interativo (Explore por classe) — os
+    # dados de origem (área/estatísticas, GeoJSON de download) continuam com
+    # os limites exatos do pixel, sem a suavização cosmética. Raio de meio
+    # pixel: arredonda os cantos retos sem deformar a forma perceptivelmente.
+    raster_profile = st.session_state.lcz_raster_profile
+    pixel_deg = abs(raster_profile["transform"].a) if raster_profile else 0.0009
+    distancia_suavizacao = pixel_deg * 0.5
+    gdf_suave = gdf_lcz.copy()
+    gdf_suave["geometry"] = gdf_suave.geometry.apply(
+        lambda g: _suavizar_geometria(g, distancia_suavizacao)
+    )
+    geojson = json.dumps(json.loads(gdf_suave.to_json()), ensure_ascii=False).replace("</", "<\\/")
     colors = json.dumps(CORES_LCZ)
     styles = {
         "Positron": "https://tiles.openfreemap.org/styles/positron",
@@ -422,6 +451,30 @@ def renderizar_aba_parametros_urbanos():
         "de vegetação (A-D)."
     )
 
+    with st.expander("⬇️ Baixar esta camada"):
+        col_tif, col_png = st.columns(2)
+        cidade_arquivo = (st.session_state.lcz_city_name or "cidade").lower().replace(" ", "_")
+        with col_tif:
+            try:
+                import io
+                buf_tif = io.BytesIO()
+                resultado["combined_rasters"][variavel].rio.to_raster(buf_tif, driver="GTiff")
+                st.download_button(
+                    "🗺️ GeoTIFF", buf_tif.getvalue(),
+                    f"ucp_{variavel}_{cidade_arquivo}.tif", "image/tiff",
+                    use_container_width=True,
+                )
+            except Exception as e:
+                st.caption(f"GeoTIFF indisponível: {e}")
+        with col_png:
+            if st.button("📸 Gerar PNG", use_container_width=True):
+                png_data = fig.to_image(format="png", scale=2)
+                st.download_button(
+                    "⬇️ Baixar PNG", png_data,
+                    f"ucp_{variavel}_{cidade_arquivo}.png", "image/png",
+                    use_container_width=True,
+                )
+
 
 def renderizar_aba_indices_espectrais():
     """Índices espectrais por satélite, escolhidos pelo usuário e comparados entre classes LCZ."""
@@ -450,9 +503,21 @@ def renderizar_aba_indices_espectrais():
         for indice in selecionados:
             st.caption(f"**{indice}** — {INDICES_ESPECTRAIS_DESCRICOES[indice]}")
 
+        from utils.lcz4r import LCZ_ANO_REFERENCIA_GLOBAL
+
         st.caption(
-            "Baixa imagens recentes do Sentinel-2 (últimos 90 dias, poucas nuvens) recortadas na área do "
-            "mapa e calcula os índices escolhidos. Pode levar 1-2 minutos."
+            f"Busca imagens do Sentinel-2 de **{LCZ_ANO_REFERENCIA_GLOBAL}** (poucas nuvens), recortadas na "
+            "área do mapa, e calcula os índices escolhidos. Esse é o ano de referência do mapa global de "
+            "LCZ (WUDAPT/Demuzere et al., 2022) usado nesta plataforma — comparar direto com uma imagem de "
+            "hoje misturaria uma classificação de 2018 com cobertura do solo atual, sem dizer isso. Pode "
+            "levar 1-2 minutos."
+        )
+        usar_recente = st.checkbox(
+            "Usar imagens recentes (últimos 90 dias) em vez do ano de referência",
+            value=False,
+            help="Ignora o alinhamento com o ano do mapa LCZ e busca as imagens mais atuais disponíveis — "
+                 "útil para comparar com a condição de hoje, mas a comparação com as classes LCZ deixa de "
+                 "ser temporalmente coerente.",
         )
         if st.button("🌿 Carregar índices espectrais", disabled=not selecionados):
             with st.spinner("Baixando imagens de satélite e calculando índices..."):
@@ -461,10 +526,12 @@ def renderizar_aba_indices_espectrais():
                         lcz_baixar_sentinel2, lcz_calcular_indices, lcz_estatisticas_indices,
                     )
                     st.session_state.lcz_indices_requested = selecionados
-                    pc_result = lcz_baixar_sentinel2(st.session_state.lcz_raster_path)
+                    ano_ref = None if usar_recente else LCZ_ANO_REFERENCIA_GLOBAL
+                    pc_result = lcz_baixar_sentinel2(st.session_state.lcz_raster_path, ano_referencia=ano_ref)
                     indices_result = lcz_calcular_indices(pc_result, indices=selecionados)
                     st.session_state.lcz_pc_result = pc_result
                     st.session_state.lcz_indices_result = indices_result
+                    st.session_state.lcz_indices_ano_referencia = ano_ref
                     st.session_state.lcz_indices_stats = lcz_estatisticas_indices(
                         st.session_state.lcz_raster_path, indices_result
                     )
@@ -503,6 +570,17 @@ def renderizar_aba_indices_espectrais():
     )
     if temas:
         st.caption(f"Temas cobertos: {', '.join(temas)}.")
+    ano_usado = st.session_state.get("lcz_indices_ano_referencia")
+    if ano_usado:
+        st.caption(
+            f"📅 Imagens buscadas em **{ano_usado}** — ano de referência do mapa global de LCZ, "
+            "para manter a comparação temporalmente coerente com a classificação."
+        )
+    else:
+        st.caption(
+            "📅 Imagens recentes (últimos 90 dias), não alinhadas ao ano de referência do mapa LCZ "
+            "(2018) — a comparação com as classes LCZ não é temporalmente coerente neste modo."
+        )
     if indisponiveis:
         st.warning(
             "Alguns índices selecionados não apareceram no resultado final: "
@@ -521,7 +599,32 @@ def renderizar_aba_indices_espectrais():
 
     with st.expander("📋 Tabela e mais opções"):
         st.dataframe(tabela, use_container_width=True, hide_index=True)
-        st.download_button(
-            "📊 Baixar estatísticas (CSV)", tabela.to_csv(index=False),
-            f"lcz_indices_{st.session_state.lcz_city_name}.csv", "text/csv",
-        )
+        cidade_arquivo = (st.session_state.lcz_city_name or "cidade").lower().replace(" ", "_")
+        col_csv, col_tif, col_png = st.columns(3)
+        with col_csv:
+            st.download_button(
+                "📊 Estatísticas (CSV)", tabela.to_csv(index=False),
+                f"lcz_indices_{cidade_arquivo}.csv", "text/csv",
+                use_container_width=True,
+            )
+        with col_tif:
+            indices_path = st.session_state.lcz_indices_result.path if st.session_state.lcz_indices_result else None
+            if indices_path:
+                try:
+                    with open(indices_path, "rb") as f:
+                        st.download_button(
+                            "🗺️ Índices (GeoTIFF)", f.read(),
+                            f"lcz_indices_{cidade_arquivo}.tif", "image/tiff",
+                            use_container_width=True,
+                            help="Multibanda — uma banda por índice calculado.",
+                        )
+                except OSError as e:
+                    st.caption(f"GeoTIFF indisponível: {e}")
+        with col_png:
+            if st.button("📸 Gerar PNG (boxplot)", use_container_width=True):
+                png_data = stats.fig.to_image(format="png", scale=2)
+                st.download_button(
+                    "⬇️ Baixar PNG", png_data,
+                    f"lcz_indices_{cidade_arquivo}.png", "image/png",
+                    use_container_width=True,
+                )

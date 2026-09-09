@@ -11,10 +11,15 @@ from utils.lcz4r import lcz_get_map, process_lcz_map, enhance_lcz_data, lcz_plot
 
 def _suavizar_geometria(geom, distancia):
     """Arredonda os cantos retos do polígono derivado do raster com um buffer
-    de fechamento (dilata depois erode, join arredondado) — visualmente suave,
-    e como a dilatação e a erosão usam a mesma distância, a área muda pouco
-    (testado <1% para `distancia` = meio pixel). Só para exibição — o
-    GeoDataFrame de origem (área/estatísticas, download) não é alterado."""
+    de fechamento (dilata depois erode, junta arredondada) — visualmente
+    suave, com pouca distorção de área (~1% testado com distância = meio
+    pixel). Aplicado por classe LCZ de forma independente: pode sobrepor
+    ligeiramente (<1% da área) a classe vizinha na borda compartilhada —
+    testamos suavizar a topologia compartilhada (via topojson) para eliminar
+    isso, mas qualquer suavização por vértice nos arcos brutos do pixel
+    quebra em auto-interseção nos trechos de 1-2 pixels de largura, então
+    ficamos com esta versão mais simples. Só para exibição — o GeoDataFrame
+    de origem (área/estatísticas, download) não é alterado."""
     if geom is None or geom.is_empty:
         return geom
     return geom.buffer(distancia, join_style="round", cap_style="round").buffer(
@@ -194,10 +199,10 @@ def renderizar_mapa_maplibre():
     gdf_lcz = st.session_state.lcz_data
     if gdf_lcz is None or gdf_lcz.empty:
         return
-    # Suaviza só a cópia usada neste mapa interativo (Explore por classe) — os
-    # dados de origem (área/estatísticas, GeoJSON de download) continuam com
-    # os limites exatos do pixel, sem a suavização cosmética. Raio de meio
-    # pixel: arredonda os cantos retos sem deformar a forma perceptivelmente.
+    # Suaviza só a cópia usada neste mapa interativo — os dados de origem
+    # (área/estatísticas, GeoJSON de download) continuam com os limites
+    # exatos do pixel. Raio de meio pixel: arredonda os cantos sem deformar
+    # a forma perceptivelmente.
     raster_profile = st.session_state.lcz_raster_profile
     pixel_deg = abs(raster_profile["transform"].a) if raster_profile else 0.0009
     distancia_suavizacao = pixel_deg * 0.5
